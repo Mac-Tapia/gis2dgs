@@ -1,0 +1,30 @@
+name: minimal-end-to-end
+inputs:
+  on_conflict: error
+  sources:
+    - id: buses
+      uri: input/buses.csv
+      kind: csv
+      options: {table_name: buses}
+    - id: lines
+      uri: input/lines.csv
+      kind: csv
+      options: {table_name: lines}
+    - id: loads
+      uri: input/loads.csv
+      kind: csv
+      options: {table_name: loads}
+    - id: sources
+      uri: input/sources.csv
+      kind: csv
+      options: {table_name: sources}
+mapping: config/mapping.yaml
+validation: config/validation.yaml
+electrical_library: config/electrical_library.yaml
+powerfactory_mapping: config/powerfactory_mapping.yaml
+dgs_schema: config/dgs_mapping.yaml
+output_dgs: output/minimal_dgs.xlsx
+validation_json: output/validation.json
+validation_csv: output/validation.csv
+schema_report: output/input_schema.yaml
+fail_on_validation_errors: true

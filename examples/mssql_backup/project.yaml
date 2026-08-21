@@ -1,0 +1,23 @@
+# Mapping plantilla para tablas buses/lines/loads/sources (fixture sintético).
+# Si el backup restaurado usa otros nombres de tabla/columna:
+#   python -m gis2dgs suggest-mapping $env:GIS2DGS_MSSQL_BACKUP --output output/suggested_mapping.yaml
+# Copie el YAML revisado sobre este archivo. convert no salta NetworkModel ni la validación.
+name: mssql-backup-to-dgs
+inputs:
+  on_conflict: error
+  sources:
+    - id: network_db
+      uri: $GIS2DGS_MSSQL_BACKUP
+      kind: mssql_backup
+      options:
+        restore_database: gis2dgs_restore
+mapping: config/mapping.yaml
+validation: config/validation.yaml
+electrical_library: config/electrical_library.yaml
+powerfactory_mapping: config/powerfactory_mapping.yaml
+dgs_schema: config/dgs_mapping.yaml
+output_dgs: output/red_dgs.xlsx
+validation_json: output/validation.json
+validation_csv: output/validation.csv
+schema_report: output/input_schema.yaml
+fail_on_validation_errors: true

@@ -1,0 +1,16 @@
+{
+  "output_dgs": "/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/minimal_dgs.xlsx",
+  "validation_json": "/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/validation.json",
+  "validation_csv": "/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/validation.csv",
+  "input_schema_report": "/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/input_schema.yaml",
+  "input_tables": 4,
+  "network": {
+    "buses": 2,
+    "lines": 1,
+    "transformers": 0,
+    "switches": 0,
+    "loads": 1,
+    "generators": 0,
+    "sources": 1
+  }
+}

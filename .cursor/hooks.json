@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python .cursor/hooks/session_start.py",
+        "timeout": 30
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python .cursor/hooks/guard_shell.py",
+        "timeout": 15
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "python .cursor/hooks/mark_pending.py",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "python .cursor/hooks/stop_gate.py",
+        "timeout": 600,
+        "loop_limit": 3
+      }
+    ]
+  }
+}

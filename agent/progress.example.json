@@ -1,0 +1,12 @@
+{
+  "goal": "Describe the current agent task",
+  "updated": "YYYY-MM-DD",
+  "items": [
+    {
+      "id": "1",
+      "title": "Example acceptance item",
+      "passes": false,
+      "evidence": ""
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+code,severity,category,object_type,object_id,message
+LIB101,WARNING,LIBRARY,Line,SEC_AB,Line SEC_AB: type_id 'AA05003D' does not exist in the electrical line-type library.
+LIB101,WARNING,LIBRARY,Line,SEC_BC,Line SEC_BC: type_id 'AA05003D' does not exist in the electrical line-type library.

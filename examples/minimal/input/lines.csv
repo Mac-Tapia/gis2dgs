@@ -1,0 +1,2 @@
+id,name,from_bus,to_bus,length_km,voltage_kv,type_id,in_service
+L1,Linea 1,B1,B2,1.25,10.0,LT1,true

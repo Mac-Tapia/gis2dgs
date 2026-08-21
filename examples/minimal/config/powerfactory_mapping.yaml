@@ -1,0 +1,28 @@
+network_id: NETWORK
+network_name: Minimal GIS2DGS Network
+foreign_key_prefix: G2D
+include_out_of_service: true
+require_type_references: true
+require_substation_references: false
+include_coordinates: false
+create_cubicle_switches: true
+create_feeder_graphics: true
+ensure_feeder_sources: true
+prefer_operational_codes: true
+classes:
+  network: ElmNet
+  substation: ElmSubstat
+  terminal: ElmTerm
+  cubicle: StaCubic
+  cubicle_switch: StaSwitch
+  line: ElmLne
+  line_type: TypLne
+  transformer: ElmTr2
+  transformer_type: TypTr2
+  switch: ElmCoup
+  load: ElmLod
+  generator: ElmGenstat
+  source: ElmXnet
+  graphic_net: IntGrfnet
+  graphic: IntGrf
+  graphic_con: IntGrfcon

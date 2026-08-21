@@ -1,0 +1,103 @@
+tables:
+- name: M_ALIMENTAD
+  rows: 1
+  columns:
+  - name: id
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: id_emp
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: codset
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: codali
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: codigo
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: id_zona
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: tension
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: conexionn
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: dmax
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: cosfi
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: fac_car
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: facperd
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: fac_sim
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: energia
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: resistivid
+    dtype: object
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: otros
+    dtype: float64
+    nullable: true
+    non_null_count: 0
+    unique_count: 0
+  - name: potcc
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: potccm
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: aniopes
+    dtype: int64
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: null

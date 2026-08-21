@@ -1,0 +1,11 @@
+project:
+  name: gis2dgs
+  version: "1.0.0"
+
+network:
+  coordinate_tolerance_m: 0.20
+  default_frequency_hz: 60.0
+
+logging:
+  level: INFO
+  directory: output/logs

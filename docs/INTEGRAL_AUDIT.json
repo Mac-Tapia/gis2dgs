@@ -1,0 +1,77 @@
+{
+  "versions": [
+    "1.0.0",
+    "1.0.0",
+    "1.0.0"
+  ],
+  "versions_consistent": true,
+  "compileall": true,
+  "module_count": 93,
+  "module_import_errors": [],
+  "line_length_violations": [],
+  "dgs_contract": {
+    "version_selector_fields_present": [],
+    "dgs_format_revision_field_present": true,
+    "product_version_neutral": true
+  },
+  "input_contract": {
+    "detection_cases": 12,
+    "detection_failures": [],
+    "product_specific_source_hits": []
+  },
+  "credential_uri_findings": [],
+  "minimal_conversion": {
+    "returncode": 0,
+    "output_exists": true,
+    "output_bytes": 9700,
+    "stdout": [
+      "{",
+      "  \"output_dgs\": \"/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/minimal_dgs.xlsx\",",
+      "  \"validation_json\": \"/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/validation.json\",",
+      "  \"validation_csv\": \"/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/validation.csv\",",
+      "  \"input_schema_report\": \"/mnt/data/gis2dgs_v1.0.0_integral_final/examples/minimal/output/input_schema.yaml\",",
+      "  \"input_tables\": 4,",
+      "  \"network\": {",
+      "    \"buses\": 2,",
+      "    \"lines\": 1,",
+      "    \"transformers\": 0,",
+      "    \"switches\": 0,",
+      "    \"loads\": 1,",
+      "    \"generators\": 0,",
+      "    \"sources\": 1",
+      "  }",
+      "}"
+    ],
+    "stderr": []
+  },
+  "external_references": {
+    "dgs_reference": "/mnt/data/gis2dgs_v1.0.0_integral_final/data/reference/real/SALIDA_DGS.xlsx",
+    "real_input": "/mnt/data/gis2dgs_v1.0.0_integral_final/data/reference/real/M_ALIMENTAD.xlsx",
+    "executed": true,
+    "returncode": 0,
+    "tail": [
+      "..                                                                       [100%]",
+      "2 passed in 0.50s"
+    ]
+  },
+  "benchmark": {
+    "nodes": 50000,
+    "lines": 49999,
+    "elapsed_seconds": 2.3422211429997333,
+    "islands": 1,
+    "energized_buses": 50000
+  },
+  "pytest": {
+    "returncode": 0,
+    "tail": [
+      ".............s.......................................................... [ 28%]",
+      "........................................................................ [ 57%]",
+      "........................................................................ [ 86%]",
+      "...................................                                      [100%]",
+      "=========================== short test summary info ============================",
+      "SKIPPED [1] tests/integration/test_postgis_real_v061.py:15: GIS2DGS_POSTGIS_TEST_URL is not configured.",
+      "250 passed, 1 skipped in 1.18s"
+    ]
+  },
+  "audit_passed": true
+}

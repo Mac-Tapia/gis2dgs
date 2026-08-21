@@ -1,0 +1,7 @@
+# Repository-level DGS schema stub.
+# Project examples ship their own configured dgs_mapping.yaml + template.
+# Keep this file unconfigured so the repo does not claim a universal DGS layout.
+configured: false
+format: excel
+template_path: ../data/reference/dgs_reference.xlsx
+classes: {}

@@ -1,0 +1,45 @@
+target_crs: null
+buses:
+  source: buses
+  fields:
+    id: id
+    name: name
+    nominal_voltage_kv: voltage_kv
+  units:
+    nominal_voltage_kv: kV
+lines:
+  source: lines
+  fields:
+    id: id
+    name: name
+    from_bus: from_bus
+    to_bus: to_bus
+    length_km: length_km
+    nominal_voltage_kv: voltage_kv
+    type_id: type_id
+    in_service: in_service
+  units:
+    length_km: km
+    nominal_voltage_kv: kV
+loads:
+  source: loads
+  fields:
+    id: id
+    name: name
+    bus_id: bus_id
+    active_power_mw: p_mw
+    reactive_power_mvar: q_mvar
+    in_service: in_service
+  units:
+    active_power_mw: MW
+    reactive_power_mvar: Mvar
+sources:
+  source: sources
+  fields:
+    id: id
+    name: name
+    bus_id: bus_id
+    nominal_voltage_kv: voltage_kv
+    in_service: in_service
+  units:
+    nominal_voltage_kv: kV

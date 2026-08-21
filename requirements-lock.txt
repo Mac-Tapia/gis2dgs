@@ -1,0 +1,16 @@
+# Versions exercised in the 1.0.0 audit environment.
+# This is a reproducibility record, not a universal upper-bound policy.
+pandas==2.2.3
+geopandas==1.1.2
+shapely==2.1.2
+pyproj==3.7.2
+networkx==3.6.1
+pydantic==2.13.4
+pydantic-settings==2.14.1
+SQLAlchemy==2.0.50
+PyYAML==6.0.3
+openpyxl==3.1.5
+pyogrio==0.12.1
+pytest==9.0.2
+pytest-cov==7.0.0
+setuptools==82.0.1

@@ -1,0 +1,119 @@
+# Mapping universal: esquema de entrada -> modelo eléctrico canónico.
+# No depende del software que originó los datos y NO contiene nombres DGS.
+# Sustituya `source` y los campos por los nombres reales de su exportación/DB.
+# Si la tabla de nodos contiene subestación, añada `substation_id` en buses.fields.
+
+# Opcional. Si se define, las geometrías se reproyectan antes de extraer x/y.
+# Para coordenadas geográficas puede usarse EPSG:4326.
+target_crs: null
+
+buses:
+  source: nodes
+  fields:
+    id: node_id
+    name: node_name
+    nominal_voltage_kv: voltage
+    feeder_id: feeder_code
+  units:
+    nominal_voltage_kv: V
+
+lines:
+  source: lines
+  fields:
+    id: line_id
+    name: line_name
+    from_bus: from_node
+    to_bus: to_node
+    length_km: length_m
+    nominal_voltage_kv: voltage
+    type_id: conductor_code
+    in_service: status
+  units:
+    length_km: m
+    nominal_voltage_kv: V
+  defaults:
+    in_service: true
+
+transformers:
+  source: transformers
+  fields:
+    id: transformer_id
+    name: transformer_name
+    hv_bus: hv_node
+    lv_bus: lv_node
+    hv_voltage_kv: hv_voltage
+    lv_voltage_kv: lv_voltage
+    rated_power_mva: rated_power
+    type_id: transformer_type
+    in_service: status
+  units:
+    hv_voltage_kv: V
+    lv_voltage_kv: V
+    rated_power_mva: kVA
+  defaults:
+    in_service: true
+
+switches:
+  source: switches
+  fields:
+    id: switch_id
+    name: switch_name
+    from_bus: from_node
+    to_bus: to_node
+    closed: switch_state
+    in_service: status
+  defaults:
+    closed: true
+    in_service: true
+
+loads:
+  source: loads
+  fields:
+    id: load_id
+    name: load_name
+    bus_id: node_id
+    active_power_mw: active_kw
+    reactive_power_mvar: reactive_kvar
+    in_service: status
+  units:
+    active_power_mw: kW
+    reactive_power_mvar: kvar
+  defaults:
+    reactive_power_mvar: 0.0
+    in_service: true
+
+generators:
+  source: generators
+  fields:
+    id: generator_id
+    name: generator_name
+    bus_id: node_id
+    active_power_mw: active_kw
+    reactive_power_mvar: reactive_kvar
+    technology: technology
+    in_service: status
+  units:
+    active_power_mw: kW
+    reactive_power_mvar: kvar
+  defaults:
+    reactive_power_mvar: 0.0
+    in_service: true
+
+sources:
+  source: sources
+  fields:
+    id: source_id
+    name: source_name
+    bus_id: node_id
+    nominal_voltage_kv: voltage
+    in_service: status
+  units:
+    nominal_voltage_kv: V
+  defaults:
+    in_service: true
+
+substations:
+  source: substations
+  fields:
+    id: substation_id
+    name: substation_name

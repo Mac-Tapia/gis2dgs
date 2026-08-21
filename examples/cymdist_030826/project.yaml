@@ -1,0 +1,23 @@
+# Export CYMDIST (IGEA GIS u otros) → DGS
+# Coloque RED_*.txt, CARGA_*.txt y opcional BD_Equipo_*.txt en una carpeta y use
+# Cargar carpeta… en la GUI, o apunte las rutas reales abajo.
+name: cymdist-030826
+inputs:
+  on_conflict: overwrite
+  sources:
+    - id: RED_030826
+      uri: ../../tests/fixtures/cymdist/RED_030826_SAMPLE.txt
+      kind: cymdist_text
+    - id: CARGA_030826
+      uri: ../../tests/fixtures/cymdist/CARGA_030826_SAMPLE.txt
+      kind: cymdist_text
+mapping: config/mapping.yaml
+validation: config/validation.yaml
+electrical_library: config/electrical_library.yaml
+powerfactory_mapping: config/powerfactory_mapping.yaml
+dgs_schema: config/dgs_mapping.yaml
+output_dgs: output/red_dgs.xlsx
+validation_json: output/validation.json
+validation_csv: output/validation.csv
+schema_report: output/input_schema.yaml
+fail_on_validation_errors: true

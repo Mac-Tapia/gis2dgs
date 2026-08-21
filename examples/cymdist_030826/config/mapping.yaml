@@ -1,0 +1,36 @@
+buses:
+  source: NODE
+  fields:
+    id: NodeID
+    x: CoordX
+    y: CoordY
+  defaults:
+    nominal_voltage_kv: 22.9
+lines:
+  source: SECTION
+  fields:
+    id: SectionID
+    from_bus: FromNodeID
+    to_bus: ToNodeID
+    length_km: Length
+    type_id: LineCableID
+  units:
+    length_km: m
+  defaults:
+    nominal_voltage_kv: 22.9
+sources:
+  source: SOURCE
+  fields:
+    id: SourceID
+    bus_id: NodeID
+    nominal_voltage_kv: DesiredVoltage
+loads:
+  source: CUSTOMER_LOADS
+  fields:
+    id: DeviceNumber
+    bus_id: ToNodeID
+    active_power_mw: Value1
+    reactive_power_mvar: Value2
+  units:
+    active_power_mw: kW
+target_crs: null

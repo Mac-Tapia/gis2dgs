@@ -1,0 +1,14 @@
+profile: standard
+voltage_tolerance_kv: 0.000001
+transformer_power_relative_tolerance: 0.000001
+
+require_in_service_source: false
+require_line_type: false
+require_transformer_type: false
+require_electrical_library: false
+require_zero_sequence_data: false
+require_geographic_coordinates: false
+require_all_buses_energized: false
+require_radial_network: false
+forbid_feeder_overlaps: false
+report_open_switch_boundaries: true

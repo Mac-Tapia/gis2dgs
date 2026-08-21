@@ -1,0 +1,268 @@
+tables:
+- name: NODE
+  rows: 3
+  columns:
+  - name: NodeID
+    dtype: str
+    nullable: false
+    non_null_count: 3
+    unique_count: 3
+  - name: CoordX
+    dtype: str
+    nullable: false
+    non_null_count: 3
+    unique_count: 3
+  - name: CoordY
+    dtype: str
+    nullable: false
+    non_null_count: 3
+    unique_count: 2
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: RED_030826
+- name: SOURCE
+  rows: 1
+  columns:
+  - name: SourceID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: DeviceNumber
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: NodeID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: NetworkID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: DesiredVoltage
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: RED_030826
+- name: SECTION
+  rows: 2
+  columns:
+  - name: SectionID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: FromNodeID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: ToNodeID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: Phase
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  - name: LineCableID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  - name: Length
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: Overhead
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: RED_030826
+- name: LINE_CONFIGURATION
+  rows: 2
+  columns:
+  - name: SectionID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: LineCableID
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  - name: Length
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: Overhead
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: RED_030826
+- name: LOADS
+  rows: 1
+  columns:
+  - name: SectionID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: DeviceNumber
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: LoadType
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Connection
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Location
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: ToNodeID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: CARGA_030826
+- name: CUSTOMER_LOADS
+  rows: 1
+  columns:
+  - name: SectionID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: DeviceNumber
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: LoadType
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: CustomerNumber
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: CustomerType
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Status
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: LockDuringLoadAllocation
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Year
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: LoadModelID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: NormalPriority
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: EmergencyPriority
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: ValueType
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Phase
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Value1
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: Value2
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: ConnectedKVA
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: KWH
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: NumberOfCustomer
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: CenterTapPercent
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: ToNodeID
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: CARGA_030826

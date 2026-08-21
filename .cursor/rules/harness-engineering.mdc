@@ -1,0 +1,34 @@
+---
+description: GIS2DGS agent harness — Always / Ask / Never and verification gates
+alwaysApply: true
+---
+
+# Agent harness (GIS2DGS)
+
+Agent = Model + Harness. This repo's harness is AGENTS.md + skills + `.cursor/hooks` + `scripts/agent_harness`.
+
+## Always
+
+- Read `skills/gis2dgs/SKILL.md` before changing code.
+- Keep one repo; no parallel converter projects.
+- Map by schema/YAML adapters — never `if ArcGIS` / `if IGEA`.
+- Put results under `output/`.
+- After code changes, run `python scripts/run_verify_gate.py` before claiming done.
+
+## Ask first
+
+- `git commit` / `git push`
+- Docker teardown / SQL Server restore against non-example data
+- Any change that touches credentials or company IDs
+
+## Never
+
+- Force-push, `git reset --hard`, recursive force deletes
+- Overwrite `data/reference/real/`
+- Hardcode credentials or personal paths
+- Skip `NetworkModel` / validation to write DGS directly from tables
+
+## Sensors
+
+- Soft stop-gate nudges when `.cursor/harness/pending_verify` exists
+- Strict mode: set `GIS2DGS_HARNESS_STRICT=1` to auto-run the full verify gate on stop

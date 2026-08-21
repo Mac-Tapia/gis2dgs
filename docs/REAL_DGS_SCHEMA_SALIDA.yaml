@@ -1,0 +1,732 @@
+template: /mnt/data/SALIDA_DGS.xlsx
+dgs_format_version: '5'
+sheets:
+- sheet: General
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - Descr(a:40)
+  - Val(a:40)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: Descr(a:40)
+    name: Descr
+    type: a
+    size: 40
+  - raw: Val(a:40)
+    name: Val
+    type: a
+    size: 40
+  max_row: 2
+  max_column: 3
+- sheet: ElmNet
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - frnom(r)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: frnom(r)
+    name: frnom
+    type: r
+    size: null
+  max_row: 2
+  max_column: 3
+- sheet: IntGrfnet
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - snap_on(i)
+  - grid_on(i)
+  - ortho_on(i)
+  - pDataFolder(p)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: snap_on(i)
+    name: snap_on
+    type: i
+    size: null
+  - raw: grid_on(i)
+    name: grid_on
+    type: i
+    size: null
+  - raw: ortho_on(i)
+    name: ortho_on
+    type: i
+    size: null
+  - raw: pDataFolder(p)
+    name: pDataFolder
+    type: p
+    size: null
+  max_row: 2
+  max_column: 6
+- sheet: TypCon
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - uline(r)
+  - sline(r)
+  - ncsub(i)
+  - dsubc(r)
+  - rpha(r)
+  - diaco(r)
+  - erpha(r)
+  - rpha_tmax(r)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: uline(r)
+    name: uline
+    type: r
+    size: null
+  - raw: sline(r)
+    name: sline
+    type: r
+    size: null
+  - raw: ncsub(i)
+    name: ncsub
+    type: i
+    size: null
+  - raw: dsubc(r)
+    name: dsubc
+    type: r
+    size: null
+  - raw: rpha(r)
+    name: rpha
+    type: r
+    size: null
+  - raw: diaco(r)
+    name: diaco
+    type: r
+    size: null
+  - raw: erpha(r)
+    name: erpha
+    type: r
+    size: null
+  - raw: rpha_tmax(r)
+    name: rpha_tmax
+    type: r
+    size: null
+  max_row: 266
+  max_column: 10
+- sheet: TypGeo
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - nlear(i)
+  - nlcir(i)
+  - xy_e:SIZEROW(i)
+  - xy_e:SIZECOL(i)
+  - xy_c:SIZEROW(i)
+  - xy_c:SIZECOL(i)
+  - xy_c:0:0(r)
+  - xy_c:0:1(r)
+  - xy_c:0:2(r)
+  - xy_c:0:3(r)
+  - xy_c:0:4(r)
+  - xy_c:0:5(r)
+  - xy_c:0:6(r)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: nlear(i)
+    name: nlear
+    type: i
+    size: null
+  - raw: nlcir(i)
+    name: nlcir
+    type: i
+    size: null
+  - raw: xy_e:SIZEROW(i)
+    name: xy_e:SIZEROW
+    type: i
+    size: null
+  - raw: xy_e:SIZECOL(i)
+    name: xy_e:SIZECOL
+    type: i
+    size: null
+  - raw: xy_c:SIZEROW(i)
+    name: xy_c:SIZEROW
+    type: i
+    size: null
+  - raw: xy_c:SIZECOL(i)
+    name: xy_c:SIZECOL
+    type: i
+    size: null
+  - raw: xy_c:0:0(r)
+    name: xy_c:0:0
+    type: r
+    size: null
+  - raw: xy_c:0:1(r)
+    name: xy_c:0:1
+    type: r
+    size: null
+  - raw: xy_c:0:2(r)
+    name: xy_c:0:2
+    type: r
+    size: null
+  - raw: xy_c:0:3(r)
+    name: xy_c:0:3
+    type: r
+    size: null
+  - raw: xy_c:0:4(r)
+    name: xy_c:0:4
+    type: r
+    size: null
+  - raw: xy_c:0:5(r)
+    name: xy_c:0:5
+    type: r
+    size: null
+  - raw: xy_c:0:6(r)
+    name: xy_c:0:6
+    type: r
+    size: null
+  max_row: 12
+  max_column: 15
+- sheet: TypLne
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - chr_name(a:20)
+  - Ithr(r)
+  - aohl_(a:3)
+  - bline(r)
+  - bline0(r)
+  - nlnph(i)
+  - nneutral(i)
+  - rline(r)
+  - rline0(r)
+  - rtemp(r)
+  - sline(r)
+  - uline(r)
+  - xline(r)
+  - xline0(r)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: chr_name(a:20)
+    name: chr_name
+    type: a
+    size: 20
+  - raw: Ithr(r)
+    name: Ithr
+    type: r
+    size: null
+  - raw: aohl_(a:3)
+    name: aohl_
+    type: a
+    size: 3
+  - raw: bline(r)
+    name: bline
+    type: r
+    size: null
+  - raw: bline0(r)
+    name: bline0
+    type: r
+    size: null
+  - raw: nlnph(i)
+    name: nlnph
+    type: i
+    size: null
+  - raw: nneutral(i)
+    name: nneutral
+    type: i
+    size: null
+  - raw: rline(r)
+    name: rline
+    type: r
+    size: null
+  - raw: rline0(r)
+    name: rline0
+    type: r
+    size: null
+  - raw: rtemp(r)
+    name: rtemp
+    type: r
+    size: null
+  - raw: sline(r)
+    name: sline
+    type: r
+    size: null
+  - raw: uline(r)
+    name: uline
+    type: r
+    size: null
+  - raw: xline(r)
+    name: xline
+    type: r
+    size: null
+  - raw: xline0(r)
+    name: xline0
+    type: r
+    size: null
+  max_row: 121
+  max_column: 17
+- sheet: TypTr2
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - strn(r)
+  - frnom(r)
+  - nt2ph(i)
+  - utrn_h(r)
+  - utrn_l(r)
+  - uktr(r)
+  - pcutr(r)
+  - tr2cn_h(a:2)
+  - tr2cn_l(a:2)
+  - nt2ag(i)
+  - pfe(r)
+  - tap_side(i)
+  - dutap(r)
+  - nntap0(i)
+  - ntpmn(i)
+  - ntpmx(i)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: strn(r)
+    name: strn
+    type: r
+    size: null
+  - raw: frnom(r)
+    name: frnom
+    type: r
+    size: null
+  - raw: nt2ph(i)
+    name: nt2ph
+    type: i
+    size: null
+  - raw: utrn_h(r)
+    name: utrn_h
+    type: r
+    size: null
+  - raw: utrn_l(r)
+    name: utrn_l
+    type: r
+    size: null
+  - raw: uktr(r)
+    name: uktr
+    type: r
+    size: null
+  - raw: pcutr(r)
+    name: pcutr
+    type: r
+    size: null
+  - raw: tr2cn_h(a:2)
+    name: tr2cn_h
+    type: a
+    size: 2
+  - raw: tr2cn_l(a:2)
+    name: tr2cn_l
+    type: a
+    size: 2
+  - raw: nt2ag(i)
+    name: nt2ag
+    type: i
+    size: null
+  - raw: pfe(r)
+    name: pfe
+    type: r
+    size: null
+  - raw: tap_side(i)
+    name: tap_side
+    type: i
+    size: null
+  - raw: dutap(r)
+    name: dutap
+    type: r
+    size: null
+  - raw: nntap0(i)
+    name: nntap0
+    type: i
+    size: null
+  - raw: ntpmn(i)
+    name: ntpmn
+    type: i
+    size: null
+  - raw: ntpmx(i)
+    name: ntpmx
+    type: i
+    size: null
+  max_row: 1
+  max_column: 18
+- sheet: TypFuse
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - urat(r)
+  - irat(r)
+  - frq(r)
+  - iopt_typ(a:2)
+  - pmelt(p)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: urat(r)
+    name: urat
+    type: r
+    size: null
+  - raw: irat(r)
+    name: irat
+    type: r
+    size: null
+  - raw: frq(r)
+    name: frq
+    type: r
+    size: null
+  - raw: iopt_typ(a:2)
+    name: iopt_typ
+    type: a
+    size: 2
+  - raw: pmelt(p)
+    name: pmelt
+    type: p
+    size: null
+  max_row: 2
+  max_column: 7
+- sheet: ElmLne
+  header_row: null
+  columns: []
+  column_definitions: []
+  max_row: 1
+  max_column: 1
+- sheet: ElmSubStat
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - Unom(r)
+  - GPSlon(r)
+  - GPSlat(r)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: Unom(r)
+    name: Unom
+    type: r
+    size: null
+  - raw: GPSlon(r)
+    name: GPSlon
+    type: r
+    size: null
+  - raw: GPSlat(r)
+    name: GPSlat
+    type: r
+    size: null
+  max_row: 1
+  max_column: 6
+- sheet: ElmLod
+  header_row: null
+  columns: []
+  column_definitions: []
+  max_row: 1
+  max_column: 1
+- sheet: ElmShnt
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - chr_name(a:20)
+  - shtype(i)
+  - ushnm(r)
+  - qrean(r)
+  - qcapn(r)
+  - qcapx(i)
+  - qcapa(i)
+  - outserv(i)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: chr_name(a:20)
+    name: chr_name
+    type: a
+    size: 20
+  - raw: shtype(i)
+    name: shtype
+    type: i
+    size: null
+  - raw: ushnm(r)
+    name: ushnm
+    type: r
+    size: null
+  - raw: qrean(r)
+    name: qrean
+    type: r
+    size: null
+  - raw: qcapn(r)
+    name: qcapn
+    type: r
+    size: null
+  - raw: qcapx(i)
+    name: qcapx
+    type: i
+    size: null
+  - raw: qcapa(i)
+    name: qcapa
+    type: i
+    size: null
+  - raw: outserv(i)
+    name: outserv
+    type: i
+    size: null
+  max_row: 1
+  max_column: 11
+- sheet: ElmTr2
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - typ_id(p)
+  - outserv(i)
+  - nntap(i)
+  - ntrcn(i)
+  - t2ldc(i)
+  - chr_name(a:40)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: typ_id(p)
+    name: typ_id
+    type: p
+    size: null
+  - raw: outserv(i)
+    name: outserv
+    type: i
+    size: null
+  - raw: nntap(i)
+    name: nntap
+    type: i
+    size: null
+  - raw: ntrcn(i)
+    name: ntrcn
+    type: i
+    size: null
+  - raw: t2ldc(i)
+    name: t2ldc
+    type: i
+    size: null
+  - raw: chr_name(a:40)
+    name: chr_name
+    type: a
+    size: 40
+  max_row: 1
+  max_column: 9
+- sheet: ElmTerm
+  header_row: null
+  columns: []
+  column_definitions: []
+  max_row: 1
+  max_column: 1
+- sheet: IntGrf
+  header_row: null
+  columns: []
+  column_definitions: []
+  max_row: 1
+  max_column: 1
+- sheet: IntGrfcon
+  header_row: null
+  columns: []
+  column_definitions: []
+  max_row: 1
+  max_column: 1
+- sheet: RelFuse
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - typ_id(p)
+  - on_off(i)
+  - aUsage(a:40)
+  - outserv(i)
+  - nphase(i)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: typ_id(p)
+    name: typ_id
+    type: p
+    size: null
+  - raw: on_off(i)
+    name: on_off
+    type: i
+    size: null
+  - raw: aUsage(a:40)
+    name: aUsage
+    type: a
+    size: 40
+  - raw: outserv(i)
+    name: outserv
+    type: i
+    size: null
+  - raw: nphase(i)
+    name: nphase
+    type: i
+    size: null
+  max_row: 1
+  max_column: 8
+- sheet: StaCubic
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - obj_bus(i)
+  - obj_id(p)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: obj_bus(i)
+    name: obj_bus
+    type: i
+    size: null
+  - raw: obj_id(p)
+    name: obj_id
+    type: p
+    size: null
+  max_row: 1
+  max_column: 5
+- sheet: StaSwitch
+  header_row: 1
+  columns:
+  - ID(a:40)
+  - loc_name(a:40)
+  - fold_id(p)
+  - on_off(i)
+  - iUse(i)
+  column_definitions:
+  - raw: ID(a:40)
+    name: ID
+    type: a
+    size: 40
+  - raw: loc_name(a:40)
+    name: loc_name
+    type: a
+    size: 40
+  - raw: fold_id(p)
+    name: fold_id
+    type: p
+    size: null
+  - raw: on_off(i)
+    name: on_off
+    type: i
+    size: null
+  - raw: iUse(i)
+    name: iUse
+    type: i
+    size: null
+  max_row: 1
+  max_column: 5

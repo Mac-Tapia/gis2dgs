@@ -1,0 +1,13 @@
+line_types:
+  LT1:
+    name: Line Type 1
+    nominal_voltage_kv: 10.0
+    r1_ohm_per_km: 0.40
+    x1_ohm_per_km: 0.30
+    c1_nf_per_km: 10.0
+    rated_current_a: 250.0
+    r0_ohm_per_km: 1.20
+    x0_ohm_per_km: 0.90
+    c0_nf_per_km: 5.0
+    phases: 3
+transformer_types: {}

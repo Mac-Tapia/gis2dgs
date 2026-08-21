@@ -1,0 +1,139 @@
+tables:
+- name: buses
+  rows: 2
+  columns:
+  - name: id
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: name
+    dtype: str
+    nullable: false
+    non_null_count: 2
+    unique_count: 2
+  - name: voltage_kv
+    dtype: float32
+    nullable: false
+    non_null_count: 2
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: buses
+- name: lines
+  rows: 1
+  columns:
+  - name: id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: name
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: from_bus
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: to_bus
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: length_km
+    dtype: float32
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: voltage_kv
+    dtype: float32
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: type_id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: in_service
+    dtype: bool
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: lines
+- name: loads
+  rows: 1
+  columns:
+  - name: id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: name
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: bus_id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: p_mw
+    dtype: float32
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: q_mvar
+    dtype: float32
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: in_service
+    dtype: bool
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: loads
+- name: sources
+  rows: 1
+  columns:
+  - name: id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: name
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: bus_id
+    dtype: str
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: voltage_kv
+    dtype: float32
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  - name: in_service
+    dtype: bool
+    nullable: false
+    non_null_count: 1
+    unique_count: 1
+  is_spatial: false
+  geometry_column: null
+  crs: null
+  source_id: sources

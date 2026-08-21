@@ -1,0 +1,36 @@
+{
+  "versions": [
+    "0.8.1",
+    "0.8.1",
+    "0.8.1"
+  ],
+  "versions_consistent": true,
+  "compileall": true,
+  "module_count": 72,
+  "module_import_errors": [],
+  "line_length_violations": [],
+  "dgs_contract": {
+    "version_selector_fields_present": [],
+    "repository_schema_configured": false,
+    "repository_schema_classes": 0,
+    "reference_path": "/mnt/data/gis2dgs_vscode_v081_audited/data/reference/dgs_reference.xlsx"
+  },
+  "pytest": {
+    "returncode": 0,
+    "tail": [
+      "=============================== warnings summary ===============================",
+      "tests/unit/gis/mapping/test_domain_mapper.py::test_mapper_reprojects_geometry_before_extracting_coordinates",
+      "tests/unit/gis/mapping/test_domain_mapper.py::test_mapper_reprojects_geometry_before_extracting_coordinates",
+      "tests/unit/gis/test_dataset.py::test_dataset_reprojects_without_mutating_original",
+      "tests/unit/gis/test_dataset.py::test_dataset_reprojects_without_mutating_original",
+      "  /opt/pyvenv/lib/python3.13/site-packages/pyproj/transformer.py:816: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)",
+      "    return self._transformer._transform_point(",
+      "",
+      "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+      "=========================== short test summary info ============================",
+      "SKIPPED [1] tests/integration/test_postgis_real_v061.py:15: GIS2DGS_POSTGIS_TEST_URL is not configured.",
+      "219 passed, 1 skipped, 4 warnings in 0.87s"
+    ]
+  },
+  "audit_passed": true
+}

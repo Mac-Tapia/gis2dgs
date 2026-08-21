@@ -1,0 +1,2 @@
+id,name,bus_id,voltage_kv,in_service
+SRC1,Red externa,B1,10.0,true

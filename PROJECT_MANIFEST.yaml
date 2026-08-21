@@ -1,0 +1,35 @@
+project:
+  name: GIS2DGS
+  version: "1.0.0"
+  purpose: "Universal electrical-network data to DIgSILENT PowerFactory DGS converter"
+  python: ">=3.11"
+  entrypoints:
+    cli: "python -m gis2dgs"
+    gui: "python -m gis2dgs gui"
+    installed_cli: "gis2dgs"
+    run_windows: ".\\RUN.ps1"
+  install:
+    windows: ".\\INSTALL_AND_VERIFY.ps1"
+    pip: "python -m pip install -r requirements.txt"
+  verification:
+    tests: "python -m pytest -q"
+    coverage: "python -m pytest --cov=gis2dgs --cov-report=term-missing"
+    integral: "python scripts/verify_integral_project.py"
+    certification: "python scripts/benchmark_converter.py"
+    agent_harness_gate: "python scripts/run_verify_gate.py"
+  agent_harness:
+    hooks: ".cursor/hooks.json"
+    rules: ".cursor/rules/"
+    progress_example: "agent/progress.example.json"
+    strict_env: "GIS2DGS_HARNESS_STRICT"
+  agent_manual: "skills/gis2dgs/SKILL.md"
+  human_manual: "docs/INTEGRAL_MANUAL.md"
+  console_manual: "docs/MANUAL_EJECUCION_CONSOLA.md"
+  step_by_step_guide: "docs/GUIA_PASO_A_PASO.md"
+  certification: "docs/CERTIFICATION_BENCHMARK.md"
+  example: "examples/minimal/project.yaml"
+  mssql_backup_example: "examples/mssql_backup/project.yaml"
+  mssql_engine: ".\\scripts\\ensure_mssql.ps1"
+  real_references:
+    - "data/reference/real/SALIDA_DGS.xlsx"
+    - "data/reference/real/M_ALIMENTAD.xlsx"

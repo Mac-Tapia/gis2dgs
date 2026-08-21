@@ -1,0 +1,2 @@
+id,name,bus_id,p_mw,q_mvar,in_service
+LD1,Carga 1,B2,0.8,0.25,true

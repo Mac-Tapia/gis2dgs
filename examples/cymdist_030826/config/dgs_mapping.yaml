@@ -1,0 +1,296 @@
+configured: true
+format: excel
+dgs_format_version: "7.0"
+template_path: dgs_template.xlsx
+default_header_row: 1
+default_data_start_row: 2
+clear_existing_rows: true
+preserve_unmapped_sheets: true
+unmapped_class_policy: error
+strict_unmapped_attributes: false
+strict_unmapped_references: false
+allow_create_without_template: false
+classes:
+  ElmNet:
+    table: ElmNet
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    static_values:
+      OP(a:1): C
+      frnom(r): 60
+  ElmTerm:
+    table: ElmTerm
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      nominal_voltage_kv:
+        column: uknom(r)
+    static_values:
+      OP(a:1): C
+      iUsage(i): 0
+  TypLne:
+    table: TypLne
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      nominal_voltage_kv:
+        column: uline(r)
+      rated_current_a:
+        column: sline(r)
+        scale: 0.001
+      r1_ohm_per_km:
+        column: rline(r)
+      x1_ohm_per_km:
+        column: xline(r)
+      c1_nf_per_km:
+        column: bline(r)
+        scale: 0.3769911184307752
+      r0_ohm_per_km:
+        column: rline0(r)
+      x0_ohm_per_km:
+        column: xline0(r)
+      c0_nf_per_km:
+        column: bline0(r)
+        scale: 0.3769911184307752
+      phases:
+        column: nlnph(i)
+    static_values:
+      OP(a:1): C
+      nneutral(i): 0
+  ElmLne:
+    table: ElmLne
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      length_km:
+        column: dline(r)
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    references:
+      type:
+        column: typ_id(p)
+    static_values:
+      OP(a:1): C
+      fline(r): 1.0
+  StaCubic:
+    table: StaCubic
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      connection_index:
+        column: obj_bus(i)
+    references:
+      connected_element:
+        column: obj_id(p)
+    static_values:
+      OP(a:1): C
+  StaSwitch:
+    table: StaSwitch
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      closed:
+        column: on_off(i)
+        value_map: {"true": 1, "false": 0}
+    static_values:
+      OP(a:1): C
+  ElmLod:
+    table: ElmLod
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      active_power_mw:
+        column: plini(r)
+      reactive_power_mvar:
+        column: qlini(r)
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    static_values:
+      OP(a:1): C
+      scale0(r): 1.0
+  ElmXnet:
+    table: ElmXnet
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      nominal_voltage_kv:
+        column: uknom(r)
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    static_values:
+      OP(a:1): C
+      bustp(a:2): SL
+  ElmSubstat:
+    table: ElmSubstat
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      coordinate_x:
+        column: GPSlon(r)
+      coordinate_y:
+        column: GPSlat(r)
+    static_values:
+      OP(a:1): C
+  TypTr2:
+    table: TypTr2
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      rated_power_mva:
+        column: strn(r)
+      hv_voltage_kv:
+        column: utrn_h(r)
+      lv_voltage_kv:
+        column: utrn_l(r)
+      uk_percent:
+        column: uktr(r)
+      copper_loss_kw:
+        column: pcutr(r)
+      no_load_loss_kw:
+        column: pfe(r)
+      no_load_current_percent:
+        column: curmg(r)
+      vector_group:
+        column: tr2cn_h(a:8)
+      phase_shift_deg:
+        column: nt2ph(i)
+    static_values:
+      OP(a:1): C
+  ElmTr2:
+    table: ElmTr2
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    references:
+      type:
+        column: typ_id(p)
+    static_values:
+      OP(a:1): C
+  ElmCoup:
+    table: ElmCoup
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      closed:
+        column: on_off(i)
+        value_map: {"true": 1, "false": 0}
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    static_values:
+      OP(a:1): C
+  ElmGenstat:
+    table: ElmGenstat
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      active_power_mw:
+        column: pgini(r)
+      reactive_power_mvar:
+        column: qgini(r)
+      in_service:
+        column: outserv(i)
+        value_map: {"true": 0, "false": 1}
+    static_values:
+      OP(a:1): C
+  ElmFeeder:
+    table: ElmFeeder
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    references:
+      head_object:
+        column: obj_id(p)
+    static_values:
+      OP(a:1): C
+      iorient(i): 1
+      i_scale(i): 0
+      icolor(i): 0
+      outserv(i): 0
+  IntGrfnet:
+    table: IntGrfnet
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      snap_on:
+        column: snap_on(i)
+      ortho_on:
+        column: ortho_on(i)
+    references:
+      data_folder:
+        column: pDataFolder(p)
+    static_values:
+      OP(a:1): C
+  IntGrf:
+    table: IntGrf
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      symbol_name:
+        column: sSymNam(a:40)
+      center_x:
+        column: rCenterX(r)
+      center_y:
+        column: rCenterY(r)
+    references:
+      data_object:
+        column: pDataObj(p)
+    static_values:
+      OP(a:1): C
+  IntGrfcon:
+    table: IntGrfcon
+    identity:
+      foreign_key_column: FID(a:40)
+      name_column: loc_name(a:80)
+      parent_column: fold_id(p)
+    attributes:
+      size_row:
+        column: rX:SIZEROW(i)
+      r_x0:
+        column: rX:0(r)
+      r_x1:
+        column: rX:1(r)
+      r_y0:
+        column: rY:0(r)
+      r_y1:
+        column: rY:1(r)
+    static_values:
+      OP(a:1): C
+      rY:SIZEROW(i): 2

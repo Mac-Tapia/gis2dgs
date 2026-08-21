@@ -1,0 +1,108 @@
+.............s.......................................................... [ 28%]
+........................................................................ [ 57%]
+........................................................................ [ 86%]
+...................................                                      [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.5-final-0 ________________
+
+Name                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------
+src/gis2dgs/__init__.py                            1      0   100%
+src/gis2dgs/__main__.py                            3      3     0%   1-5
+src/gis2dgs/cli/__init__.py                        0      0   100%
+src/gis2dgs/cli/main.py                           69     25    64%   58-59, 69-75, 78-90, 95-96, 100, 104
+src/gis2dgs/config/__init__.py                     9      0   100%
+src/gis2dgs/config/dgs.py                         73      1    99%   129
+src/gis2dgs/config/electrical_library.py          67      3    96%   32, 60, 81
+src/gis2dgs/config/input.py                       48      5    90%   26, 49, 52, 59, 64
+src/gis2dgs/config/loader.py                      17      3    82%   12, 16, 23
+src/gis2dgs/config/models.py                      42      1    98%   48
+src/gis2dgs/config/powerfactory.py                34      0   100%
+src/gis2dgs/config/project.py                     48      1    98%   34
+src/gis2dgs/config/validation.py                   6      0   100%
+src/gis2dgs/dgs/__init__.py                        9      0   100%
+src/gis2dgs/dgs/columns.py                        30      2    93%   35-36
+src/gis2dgs/dgs/exceptions.py                      4      0   100%
+src/gis2dgs/dgs/mapper.py                         61      3    95%   36, 44, 89
+src/gis2dgs/dgs/models.py                         43      9    79%   16, 29, 31, 36, 51, 57-58, 61-62
+src/gis2dgs/dgs/profile.py                         2      2     0%   7-18
+src/gis2dgs/dgs/schema.py                        120     14    88%   40, 44, 51, 54, 59, 75, 89, 91, 93, 111, 113, 115, 164, 166
+src/gis2dgs/dgs/template.py                       55      3    95%   64, 80, 82
+src/gis2dgs/dgs/validation.py                     40      3    92%   47, 59, 72
+src/gis2dgs/dgs/writer.py                        169     35    79%   28, 30, 36, 59, 74-77, 86-88, 105, 114-115, 144, 159, 164, 172, 190, 193, 195, 212-215, 236-241, 246-249
+src/gis2dgs/domain/__init__.py                    11      0   100%
+src/gis2dgs/domain/bus.py                         18      2    89%   18, 20
+src/gis2dgs/domain/generator.py                   20      2    90%   24, 26
+src/gis2dgs/domain/identifiers.py                 10      0   100%
+src/gis2dgs/domain/line.py                        21      3    86%   19, 23, 25
+src/gis2dgs/domain/load.py                        15      2    87%   17, 19
+src/gis2dgs/domain/network.py                     54      0   100%
+src/gis2dgs/domain/source.py                      16      2    88%   18, 20
+src/gis2dgs/domain/substation.py                  13      1    92%   15
+src/gis2dgs/domain/switch.py                      15      2    87%   17, 19
+src/gis2dgs/domain/transformer.py                 22      4    82%   20, 22, 26, 30
+src/gis2dgs/electrical/__init__.py                 4      0   100%
+src/gis2dgs/electrical/exceptions.py               3      0   100%
+src/gis2dgs/electrical/library.py                 51      2    96%   29-30
+src/gis2dgs/electrical/models.py                 134      9    93%   25, 50, 52, 101-104, 129, 131
+src/gis2dgs/gis/__init__.py                        9      0   100%
+src/gis2dgs/gis/base.py                            6      1    83%   15
+src/gis2dgs/gis/connectivity.py                  131     16    88%   53, 61, 69, 71, 74, 81, 86, 114, 137, 139, 150, 157, 179, 209, 214, 216
+src/gis2dgs/gis/csv_reader.py                     32      4    88%   31, 39, 44-45
+src/gis2dgs/gis/dataset.py                        29      1    97%   16
+src/gis2dgs/gis/exceptions.py                      7      0   100%
+src/gis2dgs/gis/mapping/__init__.py                3      0   100%
+src/gis2dgs/gis/mapping/accessor.py               32      1    97%   41
+src/gis2dgs/gis/mapping/domain_mapper.py          90      1    99%   113
+src/gis2dgs/gis/normalizer.py                    107     12    89%   14-15, 21, 24, 46, 56, 61-62, 65, 75, 84, 93
+src/gis2dgs/gis/postgis_reader.py                 20      2    90%   33-34
+src/gis2dgs/gis/vector_reader.py                  30      6    80%   19, 25-27, 31, 39-40
+src/gis2dgs/input/__init__.py                      7      0   100%
+src/gis2dgs/input/base.py                          5      0   100%
+src/gis2dgs/input/dataset.py                      55     16    71%   22, 52, 56-59, 70-71, 77-86, 89-92, 105
+src/gis2dgs/input/detector.py                     38      1    97%   43
+src/gis2dgs/input/exceptions.py                    4      0   100%
+src/gis2dgs/input/merge/__init__.py                2      0   100%
+src/gis2dgs/input/merge/merger.py                  9      0   100%
+src/gis2dgs/input/readers/__init__.py              6      0   100%
+src/gis2dgs/input/readers/csv.py                  25      3    88%   29, 35-36
+src/gis2dgs/input/readers/database.py             58     11    81%   49, 54-55, 65, 68, 78-79, 99-102
+src/gis2dgs/input/readers/excel.py                27      6    78%   27, 32-42
+src/gis2dgs/input/readers/parquet.py              24     15    38%   20-22, 25-43
+src/gis2dgs/input/readers/vector.py               38      8    79%   27, 35-37, 41, 49-51
+src/gis2dgs/input/registry.py                     23      7    70%   33-39
+src/gis2dgs/input/schema/__init__.py               2      0   100%
+src/gis2dgs/input/schema/discovery.py             44      0   100%
+src/gis2dgs/pipeline.py                           55      2    96%   43, 95
+src/gis2dgs/powerfactory/__init__.py               9      0   100%
+src/gis2dgs/powerfactory/classes.py               15      0   100%
+src/gis2dgs/powerfactory/client.py                 3      0   100%
+src/gis2dgs/powerfactory/exceptions.py             3      0   100%
+src/gis2dgs/powerfactory/ids.py                   41      2    95%   26, 58
+src/gis2dgs/powerfactory/mapping.py              158     17    89%   56-57, 68, 92, 97-98, 177, 188, 227, 239-245, 287, 357, 395, 527-528
+src/gis2dgs/powerfactory/model.py                 52      7    87%   41, 43, 45, 64-65, 71-72
+src/gis2dgs/powerfactory/policy.py                36      2    94%   43, 45
+src/gis2dgs/powerfactory/validation.py            35      1    97%   32
+src/gis2dgs/topology/__init__.py                   7      0   100%
+src/gis2dgs/topology/analysis.py                  88      4    95%   22, 43, 78, 116
+src/gis2dgs/topology/analyzer.py                  18      0   100%
+src/gis2dgs/topology/branches.py                  76      3    96%   18, 74, 109
+src/gis2dgs/topology/graph.py                     46      6    87%   118-119, 144-145, 168-172
+src/gis2dgs/topology/models.py                    82      0   100%
+src/gis2dgs/topology/tracing.py                  104      4    96%   46, 60, 111, 179
+src/gis2dgs/validation/__init__.py                 6      0   100%
+src/gis2dgs/validation/data_quality_rules.py      57      2    96%   84, 116
+src/gis2dgs/validation/electrical_rules.py        33      3    91%   52, 95, 122
+src/gis2dgs/validation/exporters.py               21      0   100%
+src/gis2dgs/validation/library_rules.py           39      0   100%
+src/gis2dgs/validation/network_rules.py           33      0   100%
+src/gis2dgs/validation/policy.py                  54      3    94%   25, 27, 31
+src/gis2dgs/validation/readiness_rules.py         29      1    97%   68
+src/gis2dgs/validation/result.py                  59      0   100%
+src/gis2dgs/validation/topology_rules.py          29      1    97%   113
+src/gis2dgs/validation/validator.py               35      0   100%
+----------------------------------------------------------------------------
+TOTAL                                           3443    311    91%
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_postgis_real_v061.py:15: GIS2DGS_POSTGIS_TEST_URL is not configured.
+250 passed, 1 skipped in 1.94s

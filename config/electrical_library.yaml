@@ -1,0 +1,36 @@
+# Fase 6 — Biblioteca eléctrica canónica.
+#
+# Mantener este archivo con datos aprobados por la empresa, fabricante o
+# documentación técnica. No se incluyen parámetros inventados por defecto.
+#
+# Ejemplo de estructura (comentado):
+# line_types:
+#   CODIGO_TIPO_LINEA:
+#     name: "Descripción"
+#     nominal_voltage_kv: <dato_verificado>
+#     r1_ohm_per_km: <dato_verificado>
+#     x1_ohm_per_km: <dato_verificado>
+#     rated_current_a: <dato_verificado>
+#     c1_nf_per_km: <dato_verificado>
+#     r0_ohm_per_km: <dato_verificado_opcional>
+#     x0_ohm_per_km: <dato_verificado_opcional>
+#     c0_nf_per_km: <dato_verificado_opcional>
+#     phases: 3
+#
+# transformer_types:
+#   CODIGO_TIPO_TRAFO:
+#     name: "Descripción"
+#     rated_power_mva: <dato_verificado>
+#     hv_voltage_kv: <dato_verificado>
+#     lv_voltage_kv: <dato_verificado>
+#     uk_percent: <dato_verificado>
+#     copper_loss_kw: <dato_verificado>
+#     no_load_loss_kw: <dato_verificado>
+#     no_load_current_percent: <dato_verificado>
+#     vector_group: "Dyn11"
+#     phase_shift_deg: 0.0
+#     uk0_percent: <dato_verificado_opcional>
+#     ur0_percent: <dato_verificado_opcional>
+
+line_types: {}
+transformer_types: {}

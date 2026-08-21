@@ -1,0 +1,30 @@
+name: utility-network
+inputs:
+  on_conflict: error
+  sources:
+    # Ejemplo archivo Excel con varias hojas:
+    - id: assets
+      uri: ../data/input/network_export.xlsx
+      kind: excel
+      options:
+        # sheets: [nodes, lines, transformers, loads]
+        aliases: {}
+
+    # Ejemplo base de datos (descomente y defina GIS2DGS_DB_URL):
+    # - id: database
+    #   uri: $GIS2DGS_DB_URL
+    #   kind: database
+    #   options:
+    #     tables: [nodes, lines]
+    #     aliases: {}
+
+mapping: mapping.yaml
+validation: validation.yaml
+electrical_library: electrical_library.yaml
+powerfactory_mapping: powerfactory_mapping.yaml
+dgs_schema: dgs_mapping.yaml
+output_dgs: ../output/dgs/network_dgs.xlsx
+validation_json: ../output/validation/validation.json
+validation_csv: ../output/validation/validation.csv
+schema_report: ../output/validation/input_schema.yaml
+fail_on_validation_errors: true

@@ -1,0 +1,14 @@
+---
+description: Layer boundaries for GIS2DGS source packages
+globs: src/gis2dgs/**/*.py
+alwaysApply: false
+---
+
+# Layer boundaries
+
+- `domain/` — pure electrical model; no pandas/geopandas/DB/DGS imports
+- `input/` — formats and databases only
+- `gis/` — CRS/geometry/spatial reconstruction only
+- `dgs/` — schema-driven DGS; must not know GIS vendor brands
+- Provider differences belong in YAML + adapters, not brand `if` branches
+- Prefer extending the existing pipeline over writing DGS from raw tables
