@@ -12,6 +12,7 @@ Este repositorio incluye un **agent harness** para Cursor:
 | Enforcement | `.cursor/hooks.json` + `.cursor/hooks/` | Bloquea shell peligroso; marca verify pendiente; stop-gate |
 | Sensores | `scripts/agent_harness/verify_gate.py` | `pytest` + `verify_integral_project.py` |
 | Estado | `agent/progress.json`, `.cursor/harness/` | Progreso y veredicto (runtime; no commitear estado) |
+| Hermes (opcional) | `.agents/skills/gis2dgs`, `docs/HERMES_AGENT.md` | Agente autónomo open source; mismo skill / verify gate |
 
 Comando del sensor:
 
@@ -59,6 +60,19 @@ Copie `agent/progress.example.json` → `agent/progress.json` y marque `passes: 
 - Antes de considerar terminado un cambio ejecute `python -m pytest -q` y
   `python scripts/verify_integral_project.py` (o el gate unificado del harness).
 - No sobrescriba archivos de referencia reales. Genere resultados bajo `output/`.
+
+## Hermes Agent (opcional)
+
+Para tareas autónomas largas (convertir paquetes, cron, reportes) use
+[Hermes Agent](https://github.com/nousresearch/hermes-agent) con el skill del repo.
+
+```powershell
+.\scripts\install_hermes.ps1          # una vez (WSL2)
+.\scripts\hermes.ps1 model            # API key / proveedor
+.\scripts\hermes.ps1 chat -q "/gis2dgs resume el verify gate"
+```
+
+Detalle: `docs/HERMES_AGENT.md`. No sustituye el harness de Cursor.
 
 ## Comando de recuperación rápida
 

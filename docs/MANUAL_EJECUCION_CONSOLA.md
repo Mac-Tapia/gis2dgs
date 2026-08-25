@@ -84,29 +84,49 @@ o `GIS2DGS_SAMPLE_ROWS`.
 ## 4b. Proponer mapping (no genera DGS)
 
 Alinea tablas/columnas al modelo canónico con un algoritmo genético multiobjetivo (NSGA-II)
-y una selección multicriterio (TOPSIS). El conjunto Pareto es multimodal. Opcionalmente un LLM
-compatible con OpenAI puede refinar el YAML si define `GIS2DGS_LLM_URL` y `GIS2DGS_LLM_API_KEY`.
+y una selección multicriterio (TOPSIS). El conjunto Pareto es multimodal. Objetivos:
+
+- `coverage`, `lexical`, `type_consistency`, `table_uniqueness`
+- `connectivity_readiness`, `compactness`
+
+Modalidades de decisión: `nsga_topsis` (default), `greedy`, `llm`, `pareto` (índice explícito).
+Pesos TOPSIS vía `--weights`, `GIS2DGS_TOPSIS_WEIGHTS` o la GUI.
 
 ```powershell
 python -m gis2dgs suggest-mapping examples\minimal\input --output output\suggested_mapping.yaml
 python -m gis2dgs suggest-mapping datos.xlsx --output output\suggested_mapping.yaml --llm
+python -m gis2dgs suggest-mapping datos.xlsx --modality greedy --output output\suggested_mapping.yaml
+python -m gis2dgs suggest-mapping datos.xlsx --modality pareto --pareto-index 0 --output output\suggested_mapping.yaml
+python -m gis2dgs suggest-mapping datos.xlsx --weights "coverage=0.3,lexical=0.2,connectivity_readiness=0.2,compactness=0.15,type_consistency=0.1,table_uniqueness=0.05"
 ```
 
-La interfaz tiene el botón **Proponer mapping**. Después hay que revisar el YAML y ejecutar
-`convert` con un `project.yaml`.
+Junto al YAML se escribe `*_report.yaml` con `pareto[]`, `weights`, `modality` y
+`selected_objectives`. En la GUI: **Proponer mapping** → ajustar pesos/modalidad →
+**Usar selección** → **Ejecutar**.
 
 ## 4c. Cargar y convertir (flujo completo en un comando)
 
-Detecta el tipo, inspecciona, propone mapping, genera un `project.yaml` bajo
-`output\loaded\<nombre>\` y recorre NetworkModel → validación → DGS.
+Detecta el tipo, inspecciona, propone mapping, elige estrategia multimodal de conversión,
+genera un `project.yaml` bajo `output\loaded\<nombre>\` y recorre NetworkModel →
+validación → DGS.
+
+Estrategias (`--strategy`):
+
+- `auto` — ranking TOPSIS entre candidatas
+- `full_mapped` — todas las entidades mapeables
+- `network_core` — buses/líneas/fuentes (+subestaciones/trafos); sin loads dudosas
+- `compact_lines` — preferir capa de tramos &lt; 50k filas
 
 ```powershell
 python -m gis2dgs load "C:\ruta\al\archivo" --json
 python -m gis2dgs load examples\minimal\input --json
 python -m gis2dgs load examples\minimal\project.yaml --json
 python -m gis2dgs load "E:\ELOR25_V1\ELOR25_V1" --json
+python -m gis2dgs load "E:\BD ESM\BD ESM" --strategy network_core --json
+python -m gis2dgs load datos.xlsx --modality nsga_topsis --weights "compactness=0.4,connectivity_readiness=0.3,coverage=0.3"
 ```
 
+El informe de decisión queda en `output\loaded\<nombre>\output\decision_report.yaml`.
 Un `project.yaml` se convierte tal cual. Cualquier otro archivo soportado se andamia
 con las plantillas eléctricas/DGS universales. El DGS queda en
 `output\loaded\<nombre>\output\red_dgs.xlsx` (salvo que ya fuera un proyecto).

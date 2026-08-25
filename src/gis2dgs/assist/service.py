@@ -5,12 +5,23 @@ from random import Random
 from typing import Any
 
 from gis2dgs.assist.catalog import ENTITIES, EntitySpec, FieldSpec
+from gis2dgs.assist.decision import (
+    DEFAULT_TOPSIS_WEIGHTS,
+    DecisionModality,
+    OBJECTIVE_NAMES,
+    MappingDecision,
+    normalize_topsis_weights,
+    objectives_as_dict,
+    parse_modality,
+    weights_from_env,
+    weights_tuple,
+)
 from gis2dgs.assist.llm import refine_mapping_with_llm
 from gis2dgs.assist.nsga import nsga_ii
 from gis2dgs.assist.scoring import is_numeric_dtype, lexical_score, normalize_token
 from gis2dgs.assist.topsis import topsis_select
 from gis2dgs.config.models import MappingConfig
-from gis2dgs.gis.hierarchical import detect_parent_column
+from gis2dgs.gis.hierarchical import detect_feeder_column, detect_parent_column
 from gis2dgs.input.schema.discovery import ColumnSchema, DatasetSchema, TableSchema
 
 UNIT_HINTS: dict[str, str] = {
@@ -23,7 +34,58 @@ UNIT_HINTS: dict[str, str] = {
     "rated_power_mva": "MVA",
 }
 
-TOPSIS_WEIGHTS = (0.40, 0.25, 0.20, 0.15)
+
+def _infer_length_unit(column_name: str) -> str:
+    """Infer length unit from inventory column labels (often metres)."""
+
+    token = normalize_token(column_name)
+    if "km" in token:
+        return "km"
+    raw = column_name.lower()
+    if "(m)" in raw or token.endswith("m") or "metro" in token:
+        return "m"
+    return "km"
+
+
+def _infer_active_power_unit(column_name: str) -> str:
+    """Infer active-power unit from inventory labels (distribution P is usually kW)."""
+
+    token = normalize_token(column_name)
+    raw = column_name.lower()
+    if "mw" in token and "kw" not in token:
+        return "MW"
+    if "kw" in token or "(kw)" in raw:
+        return "kW"
+    if token in {"w", "watt", "watts"} or token.endswith("_w"):
+        return "W"
+    # PAC / potencia / demanda without an explicit MW tag → kW (service connections).
+    if any(marker in token for marker in ("pac", "potencia", "demanda", "dmax", "pact")):
+        return "kW"
+    return "MW"
+
+
+def _infer_reactive_power_unit(column_name: str) -> str:
+    """Infer reactive-power unit from inventory labels."""
+
+    token = normalize_token(column_name)
+    raw = column_name.lower()
+    if "mvar" in token or "mvar" in raw.replace(" ", ""):
+        return "Mvar"
+    if "kvar" in token or "kvar" in raw:
+        return "kvar"
+    if token.endswith("var") or token == "var":
+        return "var"
+    if token in {"q", "qac"} or "reactiva" in token:
+        return "kvar"
+    return "Mvar"
+
+# Backward-compatible 4-tuple used by older tests; full defaults live in decision.py.
+TOPSIS_WEIGHTS = (
+    DEFAULT_TOPSIS_WEIGHTS["coverage"],
+    DEFAULT_TOPSIS_WEIGHTS["lexical"],
+    DEFAULT_TOPSIS_WEIGHTS["type_consistency"],
+    DEFAULT_TOPSIS_WEIGHTS["table_uniqueness"],
+)
 TOP_K_TABLES = 6
 TOP_K_COLUMNS = 8
 TABLE_SCORE_MIN = 0.62
@@ -31,7 +93,50 @@ COLUMN_SCORE_MIN = 0.34
 NUMERIC_COLUMN_SCORE_MIN = 0.55
 CONNECTIVITY_COLUMN_SCORE_MIN = 0.65
 VOLTAGE_DEFAULT_KV = 1.0
+COMPACT_LINE_ROW_LIMIT = 50_000
 CONNECTIVITY_FIELDS = frozenset({"from_bus", "to_bus", "bus_id", "hv_bus", "lv_bus"})
+_NON_ENDPOINT_MARKERS = frozenset(
+    {
+        "distrito",
+        "district",
+        "jerarquia",
+        "localidad",
+        "ubicacion",
+        "direccion",
+        "address",
+        "provincia",
+        "departamento",
+        "zona",
+        "color",
+        "rol",
+        "estado",
+        "fecha",
+        "fec",
+        "descripcion",
+        "description",
+        "observacion",
+        "telefono",
+        "voltaje",
+        "tension",
+    }
+)
+_COORDINATE_MARKERS = frozenset(
+    {
+        "x",
+        "y",
+        "este",
+        "east",
+        "norte",
+        "north",
+        "coord",
+        "coordenada",
+        "utm",
+        "longitud",
+        "lon",
+        "lat",
+        "latitud",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +144,19 @@ class MappingSuggestion:
     mapping: MappingConfig
     report: dict[str, Any]
     pareto: tuple[dict[str, Any], ...]
+    modality: DecisionModality = DecisionModality.NSGA_TOPSIS
+    selected_index: int = 0
+    weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TOPSIS_WEIGHTS))
+
+    def as_decision(self) -> MappingDecision:
+        return MappingDecision(
+            mapping=self.mapping,
+            report=self.report,
+            pareto=self.pareto,
+            modality=self.modality,
+            selected_index=self.selected_index,
+            weights=dict(self.weights),
+        )
 
 
 @dataclass(slots=True)
@@ -60,15 +178,51 @@ def suggest_mapping(
     use_llm: bool = False,
     population_size: int = 32,
     generations: int = 24,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | tuple[float, ...] | list[float] | None = None,
+    pareto_index: int | None = None,
 ) -> MappingSuggestion:
-    """Propose MappingConfig from discovered schema. Never writes DGS."""
+    """Propose MappingConfig from discovered schema. Never writes DGS.
+
+    Multi-objective NSGA-II explores the Pareto front; multi-criteria TOPSIS
+    (or an explicit modality) selects one candidate. Never silently overlays
+    a greedy mapping on top of the selected chromosome.
+    """
+
+    chosen_modality = parse_modality(modality)
+    if use_llm and chosen_modality is DecisionModality.NSGA_TOPSIS:
+        # Legacy ``use_llm=True`` requests LLM refinement after TOPSIS.
+        pass
+    weight_map = normalize_topsis_weights(weights if weights is not None else weights_from_env())
+    weight_vec = weights_tuple(weight_map)
 
     space = _build_space(schema)
     if space.length == 0:
         empty = MappingConfig()
-        return MappingSuggestion(empty, {"method": "nsga-ii+topsis", "pareto_size": 0}, ())
+        report = {
+            "method": "nsga-ii+topsis",
+            "modality": chosen_modality.value,
+            "multicriteria_weights": weight_map,
+            "pareto_size": 0,
+            "selected_index": 0,
+            "selected_objectives": objectives_as_dict((0.0,) * len(OBJECTIVE_NAMES)),
+            "llm_used": False,
+            "warnings": _warnings(empty, schema),
+            "note": (
+                "This YAML is a mapping proposal. Conversion still requires NetworkModel "
+                "and validation via project.yaml; it does not write DGS by itself."
+            ),
+        }
+        return MappingSuggestion(
+            empty,
+            report,
+            (),
+            modality=chosen_modality,
+            selected_index=0,
+            weights=weight_map,
+        )
 
-    def evaluate(chromosome: list[int]) -> tuple[float, float, float, float]:
+    def evaluate(chromosome: list[int]) -> tuple[float, ...]:
         return _objectives(space, chromosome)
 
     def randomize(rng: Random) -> list[int]:
@@ -113,59 +267,95 @@ def suggest_mapping(
     if space.greedy not in candidates:
         candidates.append(list(space.greedy))
         candidate_obj.append(evaluate(space.greedy))
-    selected_offset = topsis_select(candidate_obj, TOPSIS_WEIGHTS)
+
+    greedy_index = next(
+        (index for index, chromosome in enumerate(candidates) if chromosome == space.greedy),
+        0,
+    )
+
+    if chosen_modality is DecisionModality.GREEDY:
+        selected_offset = greedy_index
+    elif chosen_modality is DecisionModality.PARETO:
+        if pareto_index is None:
+            raise ValueError("pareto_index is required when modality=pareto")
+        if pareto_index < 0 or pareto_index >= len(candidates):
+            raise ValueError(
+                f"pareto_index {pareto_index} out of range for front size {len(candidates)}"
+            )
+        selected_offset = int(pareto_index)
+    else:
+        selected_offset = topsis_select(candidate_obj, weight_vec)
+        # Convert requires buses; never prefer a bus-less TOPSIS pick when the
+        # front already contains a candidate with a buses layer.
+        selected_offset = _prefer_candidate_with_buses(
+            space, candidates, candidate_obj, selected_offset, weight_vec
+        )
+
     selected = candidates[selected_offset]
     mapping = _decode(space, selected)
-    greedy_mapping = _decode(space, space.greedy)
-    merged = mapping.model_dump(exclude_none=True)
-    for entity_name in ("buses", "lines", "sources", "loads"):
-        layer = getattr(greedy_mapping, entity_name)
-        if layer is not None:
-            merged[entity_name] = layer.model_dump()
-    mapping = MappingConfig.model_validate(merged)
-    if use_llm:
+
+    llm_used = False
+    if chosen_modality is DecisionModality.LLM or use_llm:
         refined = refine_mapping_with_llm(
             _schema_payload(schema),
             mapping.model_dump(exclude_none=True),
         )
         if refined:
             mapping = _merge_llm(schema, mapping, refined)
+            llm_used = True
+            if chosen_modality is DecisionModality.LLM and not llm_used:
+                pass
+        elif chosen_modality is DecisionModality.LLM:
+            # Fail-open: keep TOPSIS/NSGA selection when LLM is unavailable.
+            chosen_modality = DecisionModality.NSGA_TOPSIS
 
     pareto_payload = tuple(
         {
-            "objectives": {
-                "coverage": objectives[0],
-                "lexical": objectives[1],
-                "type_consistency": objectives[2],
-                "table_uniqueness": objectives[3],
-            },
+            "objectives": objectives_as_dict(objectives),
             "mapping": _decode(space, chromosome).model_dump(exclude_none=True),
+            "summary": _mapping_summary(_decode(space, chromosome)),
         }
         for chromosome, objectives in zip(candidates, candidate_obj, strict=True)
     )
     report = {
         "method": "nsga-ii+topsis",
-        "multicriteria_weights": {
-            "coverage": TOPSIS_WEIGHTS[0],
-            "lexical": TOPSIS_WEIGHTS[1],
-            "type_consistency": TOPSIS_WEIGHTS[2],
-            "table_uniqueness": TOPSIS_WEIGHTS[3],
-        },
+        "modality": chosen_modality.value,
+        "multicriteria_weights": weight_map,
         "pareto_size": len(candidates),
-        "selected_objectives": {
-            "coverage": candidate_obj[selected_offset][0],
-            "lexical": candidate_obj[selected_offset][1],
-            "type_consistency": candidate_obj[selected_offset][2],
-            "table_uniqueness": candidate_obj[selected_offset][3],
-        },
-        "llm_used": bool(use_llm),
+        "selected_index": selected_offset,
+        "selected_objectives": objectives_as_dict(candidate_obj[selected_offset]),
+        "llm_used": llm_used,
         "warnings": _warnings(mapping, schema),
         "note": (
             "This YAML is a mapping proposal. Conversion still requires NetworkModel "
             "and validation via project.yaml; it does not write DGS by itself."
         ),
     }
-    return MappingSuggestion(mapping, report, pareto_payload)
+    return MappingSuggestion(
+        mapping,
+        report,
+        pareto_payload,
+        modality=chosen_modality,
+        selected_index=selected_offset,
+        weights=weight_map,
+    )
+
+
+def _mapping_summary(mapping: MappingConfig) -> dict[str, str | None]:
+    summary: dict[str, str | None] = {}
+    for name in (
+        "buses",
+        "lines",
+        "loads",
+        "sources",
+        "transformers",
+        "switches",
+        "generators",
+        "substations",
+    ):
+        layer = getattr(mapping, name)
+        summary[name] = None if layer is None else str(layer.source)
+    return summary
 
 
 def mapping_to_yaml_payload(mapping: MappingConfig) -> dict[str, Any]:
@@ -228,6 +418,8 @@ def _field_accept_threshold(spec: FieldSpec) -> float:
 def _column_match_score(spec: FieldSpec, column: ColumnSchema) -> float:
     raw = lexical_score(column.name, spec.aliases)
     score = raw
+    token = normalize_token(column.name)
+    dtype = column.dtype.lower()
     if spec.numeric and is_numeric_dtype(column.dtype):
         score = min(1.0, raw + 0.08)
     elif spec.numeric and not is_numeric_dtype(column.dtype):
@@ -235,8 +427,54 @@ def _column_match_score(spec: FieldSpec, column: ColumnSchema) -> float:
             score = raw * 0.85
         elif raw < 0.99:
             score *= 0.45
+    if column.non_null_count == 0:
+        score *= 0.05
+    if spec.name in CONNECTIVITY_FIELDS:
+        if any(marker in token for marker in _NON_ENDPOINT_MARKERS):
+            score *= 0.05
+        if any(
+            marker in token
+            for marker in ("fase", "phase", "norma", "conductor", "calibre")
+        ):
+            score *= 0.10
+        if (
+            "datetime" in dtype
+            or "timestamp" in dtype
+            or dtype in {"date", "datetime64[ns]", "datetime64[us]"}
+        ):
+            score *= 0.05
+        # Segment/line code columns are not endpoint references unless they encode parent.
+        if (
+            spec.name in {"from_bus", "to_bus"}
+            and any(marker in token for marker in ("tramo", "segment", "line", "conductor"))
+            and "padre" not in token
+            and "parent" not in token
+            and not any(
+                marker in token
+                for marker in ("nodo", "bus", "origen", "destino", "from", "to", "salid")
+            )
+        ):
+            score *= 0.20
+        if (
+            spec.name == "from_bus"
+            and "padre" not in token
+            and "parent" not in token
+            and token.endswith("tramo")
+        ):
+            score *= 0.20
+    if spec.name in {"x", "y"}:
+        if not any(marker in token for marker in _COORDINATE_MARKERS):
+            score *= 0.05
+        elif token in {"cantfase", "cantfases", "fase", "fasesqtd"}:
+            score *= 0.02
+        elif "voltaje" in token or "tension" in token:
+            score *= 0.05
+    if spec.name == "nominal_voltage_kv":
+        if token in {"descripcion", "description", "nombre", "name"}:
+            score *= 0.02
+        if "kv" in token or token.endswith("kv"):
+            score = min(1.0, score + 0.12)
     if spec.name == "type_id":
-        token = normalize_token(column.name)
         if any(
             marker in token
             for marker in ("tipored", "tipocircuito", "tiposervicio", "tiposistema")
@@ -244,13 +482,13 @@ def _column_match_score(spec: FieldSpec, column: ColumnSchema) -> float:
             score *= 0.25
         elif "norma" in token or "conductor" in token:
             score = min(1.0, score + 0.15)
+        elif token in {"codigo", "code", "id", "fid"}:
+            score *= 0.15
     if spec.name == "name":
-        token = normalize_token(column.name)
-        dtype = column.dtype.lower()
         if (
             "datetime" in dtype
             or "timestamp" in dtype
-            or dtype in {"date", "datetime64[ns]"}
+            or dtype in {"date", "datetime64[ns]", "datetime64[us]"}
         ):
             score *= 0.05
         if "padre" in token or token.endswith("parent"):
@@ -312,6 +550,20 @@ def _combined_table_score(
         combined = max(combined, _best_field_score_on_table(id_spec, table) * 0.98)
     if name_score < 0.50:
         combined = min(combined, name_score + 0.18)
+    # Prefer distribution (BT) line inventories and MT feeder sources over AT trunks.
+    prefix = _table_voltage_prefix(table.name)
+    if entity.name == "lines" and prefix == "bt":
+        combined = min(1.0, combined + 0.08)
+    elif entity.name == "lines" and prefix == "at":
+        combined *= 0.92
+    if entity.name == "sources" and prefix == "mt":
+        combined = min(1.0, combined + 0.06)
+    elif entity.name == "sources" and prefix == "at":
+        combined *= 0.90
+    if entity.name == "lines" and detect_parent_column(
+        [column.name for column in table.columns]
+    ):
+        combined = min(1.0, combined + 0.04)
     return combined
 
 
@@ -535,7 +787,13 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
             column_name = space.tables[table_index].columns[column_index].name
             used_columns.add(column_name)
             fields[spec.name] = column_name
-            if spec.name in UNIT_HINTS:
+            if spec.name == "length_km":
+                units[spec.name] = _infer_length_unit(column_name)
+            elif spec.name == "active_power_mw":
+                units[spec.name] = _infer_active_power_unit(column_name)
+            elif spec.name == "reactive_power_mvar":
+                units[spec.name] = _infer_reactive_power_unit(column_name)
+            elif spec.name in UNIT_HINTS:
                 units[spec.name] = UNIT_HINTS[spec.name]
         table = space.tables[table_index]
         required = _required_fields(entity, table)
@@ -554,6 +812,35 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
         if entity.name == "lines":
             _apply_hierarchical_line_defaults(table, fields)
         _sanitize_display_name_field(table, fields)
+        _sanitize_coordinate_fields(table, fields)
+        _sanitize_voltage_field(table, fields)
+        if entity.name == "buses":
+            _sanitize_bus_id_field(table, fields)
+        if entity.name == "loads":
+            _sanitize_load_power_fields(table, fields)
+            if "active_power_mw" in fields:
+                defaults.setdefault("active_power_mw", 0.0)
+                # Re-infer after sanitize in case the column survived with a wrong default unit.
+                units["active_power_mw"] = _infer_active_power_unit(fields["active_power_mw"])
+            if "reactive_power_mvar" in fields:
+                defaults.setdefault("reactive_power_mvar", 0.0)
+                units["reactive_power_mvar"] = _infer_reactive_power_unit(
+                    fields["reactive_power_mvar"]
+                )
+        for name in _required_fields(entity, table):
+            if name in fields:
+                continue
+            spec = spec_by_name[name]
+            if spec.numeric:
+                defaults[name] = VOLTAGE_DEFAULT_KV
+                units.setdefault(name, UNIT_HINTS.get(name, "kV"))
+            elif name not in {"from_bus", "to_bus"}:
+                satisfied = False
+                break
+        if not satisfied:
+            continue
+        if entity.name == "loads" and "active_power_mw" not in fields:
+            continue
         layer: dict[str, Any] = {
             "source": table.name,
             "fields": fields,
@@ -573,6 +860,20 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
 
     payload: dict[str, Any] = {"target_crs": None}
     pending.sort(key=lambda item: (-item[1], -item[0], item[2]))
+    line_candidates = [item for item in pending if item[2] == "lines"]
+    if line_candidates:
+        preferred_line = min(
+            line_candidates,
+            key=lambda item: (
+                _line_convert_cost(space.tables[item[4]]),
+                _line_voltage_rank(item[3]["source"]),
+                -item[1],
+                -item[0],
+            ),
+        )
+        pending = [preferred_line] + [
+            item for item in pending if item is not preferred_line
+        ]
     line_prefix: str | None = None
     for _table_score, _name_score, entity_name, layer, table_index in pending:
         if entity_name == "lines":
@@ -606,9 +907,28 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
 def _table_voltage_prefix(table_name: str) -> str | None:
     token = normalize_token(table_name)
     for prefix in ("bt", "mt", "at"):
-        if token.startswith(prefix):
+        if (
+            token.startswith(prefix)
+            or token.endswith(prefix)
+            or f"tramo{prefix}" in token
+            or f"{prefix}tramo" in token
+            or f"salida{prefix}" in token
+            or f"{prefix}salida" in token
+        ):
             return prefix
     return None
+
+
+def _line_voltage_rank(table_name: str) -> int:
+    """Prefer distribution inventories (BT) over transmission (AT) for line mapping."""
+
+    return {"bt": 0, "mt": 1, "at": 2}.get(_table_voltage_prefix(table_name) or "", 3)
+
+
+def _line_convert_cost(table: TableSchema) -> int:
+    """Prefer compact line tables so GUI auto-convert finishes in minutes, not hours."""
+
+    return 1 if table.rows > 50_000 else 0
 
 
 def _apply_hierarchical_line_defaults(table: TableSchema, fields: dict[str, str]) -> None:
@@ -622,10 +942,186 @@ def _apply_hierarchical_line_defaults(table: TableSchema, fields: dict[str, str]
         parent_field = detect_parent_column([column.name for column in table.columns])
         if parent_field is not None:
             fields.setdefault("from_bus", parent_field)
-    if parent_field is None or "to_bus" in fields:
+    if parent_field is None:
         return
-    if "padre" in normalize_token(parent_field):
+    if "padre" not in normalize_token(parent_field):
+        return
+    to_bus = fields.get("to_bus")
+    if to_bus is None:
         fields["to_bus"] = line_id
+        return
+    token = normalize_token(to_bus)
+    if any(marker in token for marker in _NON_ENDPOINT_MARKERS) or to_bus == parent_field:
+        fields["to_bus"] = line_id
+
+
+def _sanitize_coordinate_fields(table: TableSchema, fields: dict[str, str]) -> None:
+    """Drop x/y mappings that are not coordinate-like columns."""
+
+    lookup = {column.name: column for column in table.columns}
+    for axis in ("x", "y"):
+        column_name = fields.get(axis)
+        if not column_name:
+            continue
+        column = lookup.get(column_name)
+        token = normalize_token(column_name)
+        if column is None or column.non_null_count == 0:
+            fields.pop(axis, None)
+            continue
+        if not any(marker in token for marker in _COORDINATE_MARKERS):
+            fields.pop(axis, None)
+            continue
+        if any(
+            marker in token
+            for marker in ("cantfase", "voltaje", "tension", "fase")
+        ):
+            fields.pop(axis, None)
+
+
+def _sanitize_voltage_field(table: TableSchema, fields: dict[str, str]) -> None:
+    """Drop voltage mappings that point at empty description/name columns."""
+
+    column_name = fields.get("nominal_voltage_kv")
+    if not column_name:
+        return
+    lookup = {column.name: column for column in table.columns}
+    column = lookup.get(column_name)
+    if column is None:
+        return
+    token = normalize_token(column_name)
+    if column.non_null_count == 0 or token in {
+        "descripcion",
+        "description",
+        "nombre",
+        "name",
+    }:
+        fields.pop("nominal_voltage_kv", None)
+
+
+def _sanitize_bus_id_field(table: TableSchema, fields: dict[str, str]) -> None:
+    """Prefer business ``codigo`` over surrogate numeric ``id`` for bus keys.
+
+    GIS inventories often expose both an internal ID and a stable code (SED/SET).
+    Loads and feeders typically reference the code, not the surrogate.
+    """
+
+    current = fields.get("id")
+    if current is None:
+        return
+    if normalize_token(current) != "id":
+        return
+    best: ColumnSchema | None = None
+    best_score = -1.0
+    for column in table.columns:
+        token = normalize_token(column.name)
+        if token not in {"codigo", "code", "cod"} and not token.startswith("cod"):
+            continue
+        if any(
+            marker in token
+            for marker in ("norma", "catalogo", "catalogue", "armado", "oficina")
+        ):
+            continue
+        if column.non_null_count <= 0:
+            continue
+        if is_numeric_dtype(column.dtype):
+            continue
+        uniqueness = column.unique_count / max(1, column.non_null_count)
+        if uniqueness < 0.95:
+            continue
+        score = uniqueness + (0.05 if token in {"codigo", "code"} else 0.0)
+        if score > best_score:
+            best_score = score
+            best = column
+    if best is not None:
+        fields["id"] = best.name
+
+
+def _prefer_candidate_with_buses(
+    space: _SearchSpace,
+    candidates: list[list[int]],
+    candidate_obj: list[tuple[float, ...]],
+    selected_offset: int,
+    weight_vec: tuple[float, ...],
+) -> int:
+    """If the front has any buses mapping, avoid selecting a bus-less chromosome."""
+
+    selected_mapping = _decode(space, candidates[selected_offset])
+    if selected_mapping.buses is not None:
+        return selected_offset
+    with_buses = [
+        index
+        for index, chromosome in enumerate(candidates)
+        if _decode(space, chromosome).buses is not None
+    ]
+    if not with_buses:
+        return selected_offset
+    restricted = [candidate_obj[index] for index in with_buses]
+    local = topsis_select(restricted, weight_vec)
+    return with_buses[local]
+
+
+def _voltage_column_type_ok(column: ColumnSchema) -> bool:
+    """String kV columns (e.g. ``22,9``) still count as voltage-typed."""
+
+    if is_numeric_dtype(column.dtype):
+        return True
+    token = normalize_token(column.name)
+    return (
+        "kv" in token
+        or "tension" in token
+        or "voltaje" in token
+        or "voltage" in token
+    )
+
+
+_LOAD_POWER_REJECT_MARKERS = frozenset(
+    {
+        "kwh",
+        "energia",
+        "energy",
+        "medidor",
+        "meter",
+        "nis",
+        "cliente",
+        "nombre",
+        "direccion",
+        "address",
+        "fecha",
+        "estado",
+        "ubicacion",
+        "geografica",
+        "geografico",
+        "distrito",
+        "jerarquia",
+        "coordenada",
+        "coord",
+        "utm",
+        "este",
+        "norte",
+        "longitud",
+        "latitud",
+    }
+)
+
+
+def _sanitize_load_power_fields(table: TableSchema, fields: dict[str, str]) -> None:
+    """Drop load power mappings that are energy counters or non-numeric inventory fields."""
+
+    lookup = {column.name: column for column in table.columns}
+    for logical in ("active_power_mw", "reactive_power_mvar"):
+        column_name = fields.get(logical)
+        if not column_name:
+            continue
+        column = lookup.get(column_name)
+        token = normalize_token(column_name)
+        if column is None or column.non_null_count == 0:
+            fields.pop(logical, None)
+            continue
+        if any(marker in token for marker in _LOAD_POWER_REJECT_MARKERS):
+            fields.pop(logical, None)
+            continue
+        if not is_numeric_dtype(column.dtype) and "demanda" not in token and "potencia" not in token:
+            fields.pop(logical, None)
 
 
 def _sanitize_display_name_field(table: TableSchema, fields: dict[str, str]) -> None:
@@ -649,6 +1145,9 @@ def _sanitize_display_name_field(table: TableSchema, fields: dict[str, str]) -> 
         return
     token = normalize_token(column.name)
     dtype = column.dtype.lower()
+    if column.non_null_count == 0:
+        fields.pop("name", None)
+        return
     if (
         "datetime" in dtype
         or "timestamp" in dtype
@@ -680,7 +1179,7 @@ def _required_fields(entity: EntitySpec, table: TableSchema) -> list[str]:
     return required
 
 
-def _objectives(space: _SearchSpace, chromosome: list[int]) -> tuple[float, float, float, float]:
+def _objectives(space: _SearchSpace, chromosome: list[int]) -> tuple[float, ...]:
     mapping = _decode(space, chromosome)
     required_total = 0
     required_hit = 0
@@ -716,14 +1215,64 @@ def _objectives(space: _SearchSpace, chromosome: list[int]) -> tuple[float, floa
             lexical_values.append(lexical_score(column.name, spec.aliases))
             if spec.numeric:
                 type_total += 1
-                if is_numeric_dtype(column.dtype):
+                if spec.name == "nominal_voltage_kv":
+                    if _voltage_column_type_ok(column):
+                        type_hits += 1
+                elif is_numeric_dtype(column.dtype):
                     type_hits += 1
 
     coverage = required_hit / required_total if required_total else 0.0
     lexical = sum(lexical_values) / len(lexical_values) if lexical_values else 0.0
     types = type_hits / type_total if type_total else 1.0
     uniqueness = len(set(used_tables)) / len(used_tables) if used_tables else 0.0
-    return (coverage, lexical, types, uniqueness)
+    connectivity = _connectivity_readiness(mapping, lookup)
+    compactness = _compactness_score(mapping, lookup)
+    return (coverage, lexical, types, uniqueness, connectivity, compactness)
+
+
+def _connectivity_readiness(
+    mapping: MappingConfig,
+    lookup: dict[str, TableSchema],
+) -> float:
+    """Higher when line endpoints can be resolved via parent/feeder or explicit buses."""
+
+    if mapping.lines is None:
+        return 0.0
+    table = lookup.get(mapping.lines.source)
+    if table is None:
+        return 0.0
+    columns = [column.name for column in table.columns]
+    score = 0.0
+    fields = mapping.lines.fields
+    if fields.get("from_bus") or detect_parent_column(columns):
+        score += 0.45
+    if fields.get("to_bus") or fields.get("id"):
+        score += 0.25
+    if fields.get("feeder_id") or detect_feeder_column(columns):
+        score += 0.20
+    if mapping.buses is not None and mapping.buses.fields.get("id"):
+        score += 0.10
+    return min(1.0, score)
+
+
+def _compactness_score(
+    mapping: MappingConfig,
+    lookup: dict[str, TableSchema],
+) -> float:
+    """Prefer manageable line inventories so GUI auto-convert finishes promptly."""
+
+    if mapping.lines is None:
+        return 0.5
+    table = lookup.get(mapping.lines.source)
+    if table is None:
+        return 0.5
+    rows = max(0, int(table.rows))
+    if rows <= 0:
+        return 1.0
+    if rows <= COMPACT_LINE_ROW_LIMIT:
+        return 1.0
+    # Soft penalty above the compact threshold.
+    return max(0.05, COMPACT_LINE_ROW_LIMIT / rows)
 
 
 def _schema_payload(schema: DatasetSchema) -> dict[str, Any]:

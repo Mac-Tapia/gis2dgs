@@ -63,6 +63,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Optional OpenAI-compatible refinement via GIS2DGS_LLM_URL and GIS2DGS_LLM_API_KEY",
     )
+    suggest.add_argument(
+        "--modality",
+        choices=["nsga_topsis", "greedy", "llm", "pareto"],
+        default="nsga_topsis",
+        help="Decision modality for selecting a mapping from the Pareto front",
+    )
+    suggest.add_argument(
+        "--pareto-index",
+        type=int,
+        default=None,
+        help="Explicit Pareto front index (requires --modality pareto)",
+    )
+    suggest.add_argument(
+        "--weights",
+        default=None,
+        help="TOPSIS weights, e.g. coverage=0.3,lexical=0.2,type_consistency=0.15,...",
+    )
 
     load = commands.add_parser(
         "load",
@@ -78,6 +95,23 @@ def build_parser() -> argparse.ArgumentParser:
     load.add_argument("--sample-rows", type=int, default=None)
     load.add_argument("--llm", action="store_true")
     load.add_argument("--debug", action="store_true")
+    load.add_argument(
+        "--modality",
+        choices=["nsga_topsis", "greedy", "llm", "pareto"],
+        default="nsga_topsis",
+    )
+    load.add_argument("--pareto-index", type=int, default=None)
+    load.add_argument(
+        "--weights",
+        default=None,
+        help="TOPSIS weights, e.g. coverage=0.3,lexical=0.2,...",
+    )
+    load.add_argument(
+        "--strategy",
+        choices=["auto", "full_mapped", "network_core", "compact_lines"],
+        default="auto",
+        help="Multimodal conversion strategy after mapping selection",
+    )
 
     convert = commands.add_parser(
         "convert",
@@ -146,6 +180,9 @@ def main() -> None:
                 kind=InputKind(args.kind),
                 sample_rows=args.sample_rows,
                 use_llm=args.llm,
+                modality=args.modality,
+                weights=args.weights,
+                pareto_index=args.pareto_index,
             )
         else:
             loaded = classify_file(Path(args.source))
@@ -154,6 +191,9 @@ def main() -> None:
                 output=args.output,
                 sample_rows=args.sample_rows,
                 use_llm=args.llm,
+                modality=args.modality,
+                weights=args.weights,
+                pareto_index=args.pareto_index,
             )
         if not outcome.success:
             parser.exit(2, f"ERROR: {outcome.message}\n")
@@ -169,6 +209,10 @@ def main() -> None:
                 work_dir=args.output_dir,
                 sample_rows=args.sample_rows,
                 use_llm=args.llm,
+                modality=args.modality,
+                weights=args.weights,
+                pareto_index=args.pareto_index,
+                strategy=args.strategy,
             )
         except Exception as exc:
             if args.debug:

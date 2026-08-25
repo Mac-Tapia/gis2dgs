@@ -33,12 +33,18 @@ def test_normalize_open_switch(value: object) -> None:
     assert normalize_switch_state(value) is False
 
 
-@pytest.mark.parametrize("value", [True, 1, "ACTIVO", "EN SERVICIO", "E", "true"])
+@pytest.mark.parametrize(
+    "value",
+    [True, 1, "ACTIVO", "EN SERVICIO", "E", "true", "CERRADO", "OPERATIVO", "INSTALADO"],
+)
 def test_normalize_in_service(value: object) -> None:
     assert normalize_service_state(value) is True
 
 
-@pytest.mark.parametrize("value", [False, 0, "INACTIVO", "FUERA DE SERVICIO", "false"])
+@pytest.mark.parametrize(
+    "value",
+    [False, 0, "INACTIVO", "FUERA DE SERVICIO", "false", "ABIERTO", "PROYECTADO"],
+)
 def test_normalize_out_of_service(value: object) -> None:
     assert normalize_service_state(value) is False
 
@@ -60,14 +66,17 @@ def test_decimal_comma_is_supported() -> None:
 
 def test_unit_conversions() -> None:
     assert convert_voltage_to_kv(22900, "V") == pytest.approx(22.9)
+    assert convert_voltage_to_kv("60 KV") == pytest.approx(60.0)
+    assert convert_voltage_to_kv("22,9 kV") == pytest.approx(22.9)
+    assert convert_voltage_to_kv("22900 V") == pytest.approx(22.9)
     assert convert_active_power_to_mw(750, "kW") == pytest.approx(0.75)
     assert convert_reactive_power_to_mvar(250, "kvar") == pytest.approx(0.25)
     assert convert_apparent_power_to_mva(630, "kVA") == pytest.approx(0.63)
 
 
-def test_unknown_voltage_unit_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Unsupported voltage unit"):
-        convert_voltage_to_kv(10, "MV")
+@pytest.mark.parametrize("unit", ["kV", "kv", "KV"])
+def test_voltage_unit_is_case_insensitive(unit: str) -> None:
+    assert convert_voltage_to_kv(10, unit) == pytest.approx(10.0)
 
 
 def test_normalize_number_rejects_bool() -> None:

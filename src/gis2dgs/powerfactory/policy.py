@@ -43,6 +43,8 @@ class PowerFactoryMappingPolicy:
     ensure_feeder_sources: bool = True
     prefer_operational_codes: bool = True
     split_networks_by_system: bool = True
+    # Skip per-feeder SLD graphics above this size (full BT inventories).
+    max_buses_for_feeder_graphics: int = 25_000
     classes: PowerFactoryClassMap = field(default_factory=PowerFactoryClassMap)
 
     def __post_init__(self) -> None:

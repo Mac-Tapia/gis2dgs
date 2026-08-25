@@ -429,6 +429,153 @@ def test_mapper_rejects_partial_xy_coordinates() -> None:
         GisToDomainMapper(config).map(dataset)
 
 
+def test_mapper_defaults_missing_load_active_power_to_zero(caplog) -> None:
+    """Blank PAC/P cells must not abort NetworkModel construction."""
+
+    import logging
+
+    dataset = GisDataset()
+    dataset.add_layer(
+        "nodes",
+        gpd.GeoDataFrame(
+            {"id": ["B1"], "v": [10]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        ),
+    )
+    dataset.add_layer(
+        "loads",
+        gpd.GeoDataFrame(
+            {
+                "load_id": ["LD1", "LD2"],
+                "bus": ["B1", "B1"],
+                "p_kw": [50.0, None],
+            },
+            geometry=[None, None],
+            crs="EPSG:4326",
+        ),
+    )
+    config = MappingConfig.model_validate(
+        {
+            "buses": {
+                "source": "nodes",
+                "fields": {"id": "id", "nominal_voltage_kv": "v"},
+            },
+            "loads": {
+                "source": "loads",
+                "fields": {
+                    "id": "load_id",
+                    "bus_id": "bus",
+                    "active_power_mw": "p_kw",
+                },
+                "units": {"active_power_mw": "kW"},
+            },
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="gis2dgs.gis.mapping.domain_mapper"):
+        network = GisToDomainMapper(config).map(dataset)
+
+    assert network.loads[LoadId("LD1")].active_power_mw == pytest.approx(0.05)
+    assert network.loads[LoadId("LD2")].active_power_mw == pytest.approx(0.0)
+    assert network.loads[LoadId("LD2")].reactive_power_mvar == pytest.approx(0.0)
+    assert any("active_power_mw" in record.message for record in caplog.records)
+
+
+def test_mapper_defaults_invalid_load_active_power_to_zero() -> None:
+    dataset = GisDataset()
+    dataset.add_layer(
+        "nodes",
+        gpd.GeoDataFrame(
+            {"id": ["B1"], "v": [10]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        ),
+    )
+    dataset.add_layer(
+        "loads",
+        gpd.GeoDataFrame(
+            {
+                "load_id": ["LD1"],
+                "bus": ["B1"],
+                "p_kw": ["n/a"],
+            },
+            geometry=[None],
+            crs="EPSG:4326",
+        ),
+    )
+    config = MappingConfig.model_validate(
+        {
+            "buses": {
+                "source": "nodes",
+                "fields": {"id": "id", "nominal_voltage_kv": "v"},
+            },
+            "loads": {
+                "source": "loads",
+                "fields": {
+                    "id": "load_id",
+                    "bus_id": "bus",
+                    "active_power_mw": "p_kw",
+                },
+                "units": {"active_power_mw": "kW"},
+            },
+        }
+    )
+
+    network = GisToDomainMapper(config).map(dataset)
+    assert network.loads[LoadId("LD1")].active_power_mw == pytest.approx(0.0)
+
+
+def test_mapper_skips_loads_with_missing_bus_id(caplog) -> None:
+    import logging
+
+    dataset = GisDataset()
+    dataset.add_layer(
+        "nodes",
+        gpd.GeoDataFrame(
+            {"id": ["B1"], "v": [10]},
+            geometry=[Point(0, 0)],
+            crs="EPSG:4326",
+        ),
+    )
+    dataset.add_layer(
+        "loads",
+        gpd.GeoDataFrame(
+            {
+                "load_id": ["LD1", "LD2"],
+                "bus": ["B1", None],
+                "p_kw": [10.0, 20.0],
+            },
+            geometry=[None, None],
+            crs="EPSG:4326",
+        ),
+    )
+    config = MappingConfig.model_validate(
+        {
+            "buses": {
+                "source": "nodes",
+                "fields": {"id": "id", "nominal_voltage_kv": "v"},
+            },
+            "loads": {
+                "source": "loads",
+                "fields": {
+                    "id": "load_id",
+                    "bus_id": "bus",
+                    "active_power_mw": "p_kw",
+                },
+                "units": {"active_power_mw": "kW"},
+            },
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="gis2dgs.gis.mapping.domain_mapper"):
+        network = GisToDomainMapper(config).map(dataset)
+
+    assert LoadId("LD1") in network.loads
+    assert LoadId("LD2") not in network.loads
+    assert any("bus_id" in record.message for record in caplog.records)
+
+
 def test_mapper_uses_linestring_length_when_length_column_missing() -> None:
     from shapely.geometry import LineString
 

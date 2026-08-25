@@ -1,4 +1,5 @@
 from math import isnan
+import re
 from typing import Any
 
 import pandas as pd
@@ -126,6 +127,15 @@ def normalize_service_state(value: Any) -> bool:
         "IN_SERVICE",
         "EN SERVICIO",
         "VNR",
+        # Feeder/switch inventory: closed breaker ⇒ energized path
+        "CERRADO",
+        "C",
+        "OPERANDO",
+        "OPERATIVO",
+        "EN OPERACION",
+        "EN OPERACIÓN",
+        "INSTALADO",
+        "ENERGIZADO",
     }
     inactive_values = {
         "0",
@@ -140,6 +150,13 @@ def normalize_service_state(value: Any) -> bool:
         "OUT_OF_SERVICE",
         "FUERA DE SERVICIO",
         "RETIRADO",
+        "ABIERTO",
+        "O",
+        "DESENERGIZADO",
+        "DESINSTALADO",
+        "PROYECTADO",
+        "NO INSTALADO",
+        "BAJA",
     }
     if text in active_values:
         return True
@@ -162,10 +179,35 @@ def convert_voltage_to_kv(
             if code not in code_lookup:
                 raise ValueError(f"Unknown voltage code: {value!r}") from None
             number = code_lookup[code]
-    else:
-        number = normalize_number(value)
+        factors = {"V": 1e-3, "kV": 1.0}
+        return _convert(number, unit, factors, "voltage")
+
+    number, inferred_unit = _parse_voltage_token(value)
     factors = {"V": 1e-3, "kV": 1.0}
-    return _convert(number, unit, factors, "voltage")
+    return _convert(number, inferred_unit or unit, factors, "voltage")
+
+
+_VOLTAGE_TOKEN = re.compile(
+    r"^\s*([+-]?\d+(?:[.,]\d+)?)\s*(kV|KV|kv|V|v)?\s*$"
+)
+
+
+def _parse_voltage_token(value: Any) -> tuple[float, str | None]:
+    """Parse ``60 KV``, ``22,9kV`` or plain numbers into (magnitude, unit|None)."""
+
+    if isinstance(value, bool):
+        raise ValueError("Boolean values are not valid numeric values here.")
+    if isinstance(value, (int, float)):
+        return float(value), None
+    text = str(value).strip()
+    match = _VOLTAGE_TOKEN.match(text)
+    if match is None:
+        return normalize_number(value), None
+    number = normalize_number(match.group(1))
+    suffix = match.group(2)
+    if suffix is None:
+        return number, None
+    return number, "kV" if suffix.upper() == "KV" else "V"
 
 
 def convert_length_to_km(value: Any, unit: str = "km") -> float:
@@ -201,8 +243,8 @@ def metres_to_km(metres: float) -> float:
 
 
 def _convert(number: float, unit: str, factors: dict[str, float], quantity: str) -> float:
-    try:
-        result = number * factors[unit]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported {quantity} unit: {unit}") from exc
-    return result
+    normalized = {key.casefold(): key for key in factors}
+    canonical = normalized.get(str(unit).strip().casefold())
+    if canonical is None:
+        raise ValueError(f"Unsupported {quantity} unit: {unit}")
+    return number * factors[canonical]

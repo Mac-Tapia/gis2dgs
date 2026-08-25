@@ -1,11 +1,25 @@
 ---
 name: gis2dgs
-version: 1.0.0
+version: 1.1.0
+description: GIS→DGS PowerFactory; mapping YAML, validate, verify gate
 summary: Convertidor universal y configurable de datos de redes eléctricas a DGS para DIgSILENT PowerFactory.
 entrypoint: python -m gis2dgs
+platforms: [windows, linux, macos]
+metadata:
+  hermes:
+    tags: [gis, powerfactory, dgs, electrical, converter]
+    category: devops
+    requires_toolsets: [terminal]
 ---
 
 # Skill operativo — GIS2DGS
+
+## When to Use
+
+- Cambios de código o config en el conversor GIS2DGS.
+- Inspección, mapping sugerido o conversión a DGS de un paquete de red.
+- Diagnóstico de fallos de pipeline / verify gate.
+- Tareas autónomas (Hermes): convertir paquete → validar → reportar bajo `output/`.
 
 ## 1. Misión
 
@@ -46,7 +60,9 @@ Nunca salte `NetworkModel` ni la validación para escribir DGS directamente desd
 
 ## 3. Mapa del código
 
-- `src/gis2dgs/assist/`: propuesta de mapping YAML (NSGA-II + TOPSIS, LLM opcional). No escribe DGS.
+- `src/gis2dgs/assist/`: propuesta de mapping YAML (NSGA-II + TOPSIS, LLM opcional),
+  modalidades de decisión (`decision.py`) y estrategias multimodales de conversión
+  (`strategies.py`). No escribe DGS.
 - `src/gis2dgs/input/`: detección, readers universales, DB, merge, descubrimiento de esquema.
 - `src/gis2dgs/gis/`: CRS, geometría y reconstrucción espacial especializada.
 - `src/gis2dgs/domain/`: modelo eléctrico canónico independiente de infraestructura.
@@ -82,10 +98,19 @@ python -m gis2dgs
 python -m gis2dgs gui
 python -m gis2dgs inspect-input <fuente> --output output/input_schema.yaml
 python -m gis2dgs load <fuente> --json
+python -m gis2dgs load <fuente> --strategy network_core --modality nsga_topsis --json
 python -m gis2dgs suggest-mapping <fuente> --output output/suggested_mapping.yaml
+python -m gis2dgs suggest-mapping <fuente> --modality pareto --pareto-index 0 --output output/suggested_mapping.yaml
 python -m gis2dgs dgs inspect-template <dgs_real.xlsx> --output output/dgs_schema.yaml
 python -m gis2dgs convert <project.yaml> --json
 ```
+
+Flujo de decisión → convert:
+
+1. `suggest-mapping` (o GUI **Proponer mapping**) → frente Pareto + pesos TOPSIS.
+2. Elegir modalidad / índice Pareto / pesos (GUI **Usar selección** o flags CLI).
+3. `load` / **Ejecutar** aplica estrategia multimodal (`auto|full_mapped|network_core|compact_lines`)
+   y escribe `output/loaded/<run>/output/decision_report.yaml` antes del DGS.
 
 Sin argumentos se abre la interfaz para **cargar un archivo y ejecutar**. El detalle de
 comandos de consola está en `docs/MANUAL_EJECUCION_CONSOLA.md`. La secuencia de
@@ -168,3 +193,37 @@ para comprender/validar esquemas, **no** para hardcodear el conversor a esos arc
 Una tarea sólo está terminada cuando código, configuración, pruebas y documentación están dentro del
 mismo proyecto y la suite no introduce regresiones. La aceptación final de un DGS en PowerFactory
 requiere además importarlo en una instalación real y ejecutar el estudio eléctrico correspondiente.
+
+## 11. Playbooks Hermes (autónomos)
+
+Usar el venv del repo (`.venv`). CWD = raíz del git checkout. Salidas siempre bajo `output/`.
+
+### Convertir un paquete tabular / GIS
+
+```powershell
+.\.venv\Scripts\python.exe -m gis2dgs load "<ruta_paquete>" --json
+# O GUI / load-and-run según el caso; no hardcodear rutas personales en commits.
+```
+
+Tras convertir, comprobar `output/loaded/<proyecto>/output/` (`red_dgs.xlsx`, `validation.json`,
+`connectivity.yaml`). Si el mapping auto es pobre, regenerar mapping (no reutilizar un
+`mapping.yaml` obsoleto a ciegas).
+
+### Cerrar cambio de código
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_verify_gate.py
+```
+
+### Pitfalls
+
+- No escribir DGS saltando `NetworkModel` / validación.
+- No filtrar capas eléctricas útiles; el filtro DGS omite vía/PAT/UAP/duplicados fechados.
+- Columnas identificador compactadas a `float32` se resuelven en GIS jerárquico — no “castear a mano”
+  en el dominio.
+- Pedir confirmación antes de `git commit` / `git push`.
+
+### Verification
+
+- `python scripts/run_verify_gate.py` → PASS.
+- DGS generado existe bajo `output/` y el informe de validación es legible.

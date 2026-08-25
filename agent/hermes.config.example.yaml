@@ -1,0 +1,21 @@
+# Copia a %USERPROFILE%\.hermes\config.yaml (Windows nativo) o
+# a ~/.hermes/config.yaml (WSL) tras `hermes setup` / `hermes model`.
+#
+# NO ponga API keys aquí en el repo. Use variables de entorno o
+# `hermes model` interactivo.
+#
+# Tras instalar:
+#   .\scripts\hermes.ps1 model
+#   .\scripts\hermes.ps1 skills trust
+#
+# Referencia: https://hermes-agent.nousresearch.com/docs/
+
+skills:
+  project_discovery: true
+  # Se rellena con: hermes skills trust <ruta_repo>
+  # trusted_project_dirs: []
+
+# Ejemplo de proveedor (descomente y ajuste vía `hermes model`, no a mano con secretos):
+# model:
+#   provider: openrouter   # o openai / nous / custom
+#   # api keys: hermes setup / variables de entorno del proveedor

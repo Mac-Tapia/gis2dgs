@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from collections import Counter
+import logging
 from typing import Any
 
 import geopandas as gpd
@@ -47,6 +49,8 @@ from gis2dgs.gis.voltage_lookup import VoltageLookup
 
 from .accessor import RowAccessor
 
+logger = logging.getLogger(__name__)
+
 
 class GisToDomainMapper:
     """Convert extracted GIS layers to the canonical electrical domain model.
@@ -63,6 +67,8 @@ class GisToDomainMapper:
     ) -> None:
         self.config = config
         self.voltage_lookup = voltage_lookup
+        self._defaulted_load_powers: Counter[str] = Counter()
+        self._skipped_loads: Counter[str] = Counter()
 
     def _voltage_codes(self) -> dict[str, float] | None:
         if self.voltage_lookup is None:
@@ -107,6 +113,7 @@ class GisToDomainMapper:
             network.add_source,
         )
         self._ensure_referenced_buses(network)
+        self._emit_defaulted_power_warnings()
         return network
 
     def _ensure_referenced_buses(self, network: NetworkModel) -> None:
@@ -287,22 +294,133 @@ class GisToDomainMapper:
             in_service=self._service_state(row),
         )
 
-    def _build_load(self, row: RowAccessor) -> Load:
+    def _build_load(self, row: RowAccessor) -> Load | None:
         object_id = normalize_identifier(row.require("id"))
+        bus_raw = row.get("bus_id")
+        if is_missing(bus_raw):
+            self._skipped_loads["missing_bus_id"] += 1
+            return None
+        try:
+            bus_id = BusId(normalize_identifier(bus_raw))
+        except (TypeError, ValueError):
+            self._skipped_loads["invalid_bus_id"] += 1
+            return None
         return Load(
             id=LoadId(object_id),
             name=normalize_name(row.get("name"), fallback=object_id),
-            bus_id=BusId(normalize_identifier(row.require("bus_id"))),
-            active_power_mw=convert_active_power_to_mw(
-                row.require("active_power_mw"),
-                row.unit("active_power_mw", "MW"),
-            ),
-            reactive_power_mvar=convert_reactive_power_to_mvar(
-                row.get("reactive_power_mvar", default=0.0),
-                row.unit("reactive_power_mvar", "Mvar"),
-            ),
+            bus_id=bus_id,
+            active_power_mw=self._load_active_power_mw(row),
+            reactive_power_mvar=self._load_reactive_power_mvar(row),
             in_service=self._service_state(row),
         )
+
+    def _load_active_power_mw(self, row: RowAccessor) -> float:
+        """Resolve load P; blank cells default to 0.0 MW with a layered warning.
+
+        Distribution inventories often leave contracted/active power empty on
+        service connections. DigSILENT accepts zero-MW loads; crashing the whole
+        conversion is worse than a documented placeholder.
+        """
+
+        source = row.mapping.fields.get("active_power_mw")
+        if source is not None and source in row.row.index:
+            column_value = row.row[source]
+            if not is_missing(column_value):
+                try:
+                    return convert_active_power_to_mw(
+                        column_value,
+                        row.unit("active_power_mw", "MW"),
+                    )
+                except (TypeError, ValueError) as exc:
+                    self._defaulted_load_powers["active_power_mw_invalid"] += 1
+                    logger.debug(
+                        "Layer %r, row %r: invalid active_power_mw (%s); "
+                        "defaulting to 0.0 MW",
+                        row.layer_name,
+                        row.row_index,
+                        exc,
+                    )
+                    return 0.0
+            self._defaulted_load_powers["active_power_mw"] += 1
+            fallback = row.mapping.defaults.get("active_power_mw", 0.0)
+            try:
+                return convert_active_power_to_mw(
+                    fallback,
+                    row.unit("active_power_mw", "MW"),
+                )
+            except (TypeError, ValueError):
+                return 0.0
+
+        raw = row.get("active_power_mw")
+        if is_missing(raw):
+            self._defaulted_load_powers["active_power_mw"] += 1
+            return 0.0
+        try:
+            return convert_active_power_to_mw(
+                raw,
+                row.unit("active_power_mw", "MW"),
+            )
+        except (TypeError, ValueError) as exc:
+            self._defaulted_load_powers["active_power_mw_invalid"] += 1
+            logger.debug(
+                "Layer %r, row %r: invalid active_power_mw (%s); defaulting to 0.0 MW",
+                row.layer_name,
+                row.row_index,
+                exc,
+            )
+            return 0.0
+
+    def _load_reactive_power_mvar(self, row: RowAccessor) -> float:
+        raw = row.get("reactive_power_mvar", default=0.0)
+        if is_missing(raw):
+            return 0.0
+        try:
+            return convert_reactive_power_to_mvar(
+                raw,
+                row.unit("reactive_power_mvar", "Mvar"),
+            )
+        except (TypeError, ValueError) as exc:
+            self._defaulted_load_powers["reactive_power_mvar_invalid"] += 1
+            logger.debug(
+                "Layer %r, row %r: invalid reactive_power_mvar (%s); defaulting to 0.0 Mvar",
+                row.layer_name,
+                row.row_index,
+                exc,
+            )
+            return 0.0
+
+    def _emit_defaulted_power_warnings(self) -> None:
+        missing = self._defaulted_load_powers.get("active_power_mw", 0)
+        if missing:
+            logger.warning(
+                "Defaulted missing load active_power_mw to 0.0 MW on %d row(s); "
+                "review source PAC/P columns or mapping units before DigSILENT studies.",
+                missing,
+            )
+        invalid_p = self._defaulted_load_powers.get("active_power_mw_invalid", 0)
+        if invalid_p:
+            logger.warning(
+                "Defaulted invalid load active_power_mw to 0.0 MW on %d row(s).",
+                invalid_p,
+            )
+        invalid_q = self._defaulted_load_powers.get("reactive_power_mvar_invalid", 0)
+        if invalid_q:
+            logger.warning(
+                "Defaulted invalid load reactive_power_mvar to 0.0 Mvar on %d row(s).",
+                invalid_q,
+            )
+        skipped_bus = self._skipped_loads.get("missing_bus_id", 0)
+        if skipped_bus:
+            logger.warning(
+                "Skipped %d load row(s) with missing bus_id (no DigSILENT connection).",
+                skipped_bus,
+            )
+        skipped_invalid_bus = self._skipped_loads.get("invalid_bus_id", 0)
+        if skipped_invalid_bus:
+            logger.warning(
+                "Skipped %d load row(s) with invalid bus_id.",
+                skipped_invalid_bus,
+            )
 
     def _build_generator(self, row: RowAccessor) -> Generator:
         object_id = normalize_identifier(row.require("id"))

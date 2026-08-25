@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from gis2dgs.domain import NetworkModel
@@ -30,7 +31,17 @@ class PowerFactoryMapper:
         network: NetworkModel,
         library: ElectricalLibrary | None = None,
     ) -> PowerFactoryModel:
-        if self.policy.ensure_feeder_sources:
+        policy = self.policy
+        if (
+            len(network.buses) > policy.max_buses_for_feeder_graphics
+            and (policy.create_feeder_graphics or policy.create_feeder_objects)
+        ):
+            policy = replace(
+                policy,
+                create_feeder_graphics=False,
+                create_feeder_objects=False,
+            )
+        if policy.ensure_feeder_sources:
             ensure_feeder_head_sources(network)
         _propagate_system_ids(network)
 
@@ -51,7 +62,7 @@ class PowerFactoryMapper:
             model,
             network,
             keys=self.keys,
-            policy=self.policy,
+            policy=policy,
             network_keys=net_keys,
             default_network_key=default_net,
         )

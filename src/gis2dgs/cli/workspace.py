@@ -12,8 +12,22 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import ValidationError
 
-from gis2dgs.assist import MappingSuggestion, mapping_to_yaml_payload, suggest_mapping
+from gis2dgs.assist import (
+    MappingSuggestion,
+    mapping_to_yaml_payload,
+    select_conversion_strategy,
+    suggest_mapping,
+)
+from gis2dgs.assist.decision import (
+    DecisionModality,
+    normalize_topsis_weights,
+    parse_modality,
+    parse_weights_string,
+    weights_from_env,
+)
+from gis2dgs.assist.strategies import ConversionStrategy, parse_strategy
 from gis2dgs.config import ResolvedProjectConfig, load_project_config
+from gis2dgs.config.models import MappingConfig
 from gis2dgs.dgs import DgsError, inspect_excel_template
 from gis2dgs.input import (
     SQL_SCRIPT_ERROR,
@@ -29,7 +43,11 @@ from gis2dgs.input import (
     merge_datasets,
     programmed_file_suffixes,
 )
-from gis2dgs.input.readers.cymdist_text import is_cymdist_import_config
+from gis2dgs.input.dgs_relevance import filter_dgs_relevant_paths
+from gis2dgs.input.readers.cymdist_text import (
+    is_cymdist_import_config,
+    is_cymdist_network_export,
+)
 from gis2dgs.input.compact import env_sample_rows
 from gis2dgs.pipeline import (
     ConversionResult,
@@ -161,6 +179,10 @@ def load_and_run(
     sample_rows: int | None = None,
     use_llm: bool = False,
     on_progress: ProgressReporter = None,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
+    strategy: ConversionStrategy | str | None = None,
 ) -> ExecutionOutcome:
     """Detect type and run inspect → mapping → NetworkModel → validated DGS.
 
@@ -177,6 +199,10 @@ def load_and_run(
             sample_rows=sample_rows,
             use_llm=use_llm,
             on_progress=on_progress,
+            modality=modality,
+            weights=weights,
+            pareto_index=pareto_index,
+            strategy=strategy,
         )
     return load_and_run_loaded(
         classify_file(Path(source)),
@@ -184,6 +210,10 @@ def load_and_run(
         sample_rows=sample_rows,
         use_llm=use_llm,
         on_progress=on_progress,
+        modality=modality,
+        weights=weights,
+        pareto_index=pareto_index,
+        strategy=strategy,
     )
 
 
@@ -194,6 +224,11 @@ def load_and_run_loaded(
     sample_rows: int | None = None,
     use_llm: bool = False,
     on_progress: ProgressReporter = None,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
+    strategy: ConversionStrategy | str | None = None,
+    confirmed_mapping: dict[str, Any] | MappingConfig | None = None,
 ) -> ExecutionOutcome:
     """Run the integral flow for an already-classified source (single file or bundle)."""
 
@@ -213,6 +248,11 @@ def load_and_run_loaded(
         sample_rows=sample_rows,
         use_llm=use_llm,
         on_progress=on_progress,
+        modality=modality,
+        weights=weights,
+        pareto_index=pareto_index,
+        strategy=strategy,
+        confirmed_mapping=confirmed_mapping,
     )
 
 
@@ -301,7 +341,44 @@ def _is_cymdist_data_bundle(assessment) -> bool:
 
 def _bundle_data_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
     return tuple(path for path in paths if not is_cymdist_import_config(path))
-    return tuple(path for path in paths if not is_cymdist_import_config(path))
+
+
+def _select_conversion_paths(
+    paths: tuple[Path, ...],
+    *,
+    on_progress: ProgressReporter = None,
+    announce: bool = True,
+) -> tuple[Path, ...]:
+    """Drop CYMDIST import-config and non-electrical inventory Excel/CSV layers."""
+
+    data_paths = _bundle_data_paths(paths)
+    if len(data_paths) <= 1:
+        return data_paths
+    if any(is_cymdist_network_export(path) for path in data_paths):
+        return data_paths
+    included, decisions = filter_dgs_relevant_paths(data_paths)
+    skipped = [item for item in decisions if not item.include]
+    if announce and skipped and included:
+        emit_progress(
+            on_progress,
+            f"[Paquete] Omitidos {len(skipped)} archivo(s) que no aportan al DGS:",
+        )
+        for item in skipped:
+            emit_progress(on_progress, f"  - {item.path.name}: {item.reason}")
+    if announce and included:
+        emit_progress(
+            on_progress,
+            f"[Paquete] Se ejecutarán {len(included)} archivo(s) eléctricos/topológicos.",
+        )
+    if not included:
+        # Universal packages without inventory filename markers (e.g. buses.csv).
+        if announce:
+            emit_progress(
+                on_progress,
+                "[Paquete] Sin marcadores de inventario; se usan todos los archivos de datos.",
+            )
+        return data_paths
+    return included
 
 
 def _format_bundle_summary(assessment) -> str:
@@ -321,9 +398,27 @@ def _format_bundle_summary(assessment) -> str:
     return "\n".join(lines)
 
 
-def _sources_for_paths(paths: tuple[Path, ...]) -> list[dict[str, Any]]:
+def _mapped_table_names(mapping: dict[str, Any]) -> set[str]:
+    """Table names referenced by entity blocks in a mapping proposal."""
+
+    names: set[str] = set()
+    for key, block in mapping.items():
+        if key in {"target_crs", "connectivity"} or not isinstance(block, dict):
+            continue
+        source = block.get("source")
+        if isinstance(source, str) and source.strip():
+            names.add(source.strip())
+    return names
+
+
+def _sources_for_paths(
+    paths: tuple[Path, ...],
+    *,
+    mapping: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     used: set[str] = set()
+    mapped = _mapped_table_names(mapping) if mapping else set()
     for path in _bundle_data_paths(paths):
         kind = detect_input_kind(path)
         base = re.sub(r"[^A-Za-z0-9_]+", "_", path.stem) or "source"
@@ -340,10 +435,21 @@ def _sources_for_paths(paths: tuple[Path, ...]) -> list[dict[str, Any]]:
         }
         if kind is InputKind.CSV:
             entry["options"] = {"table_name": path.stem}
+        elif kind is InputKind.EXCEL:
+            # GIS inventory exports use random sheet names (informe…); map by file stem.
+            entry["options"] = {"table_name": path.stem}
         elif kind is InputKind.MSSQL_BACKUP:
             os.environ["GIS2DGS_MSSQL_BACKUP"] = str(path.resolve())
         sources.append(entry)
-    return sources
+    if not mapped:
+        return sources
+    filtered = [
+        entry
+        for entry in sources
+        if (entry.get("options") or {}).get("table_name") in mapped
+        or Path(str(entry["uri"])).stem in mapped
+    ]
+    return filtered or sources
 
 
 def _write_loaded_project(
@@ -374,7 +480,7 @@ def _write_loaded_project(
         "validation_json": "output/validation.json",
         "validation_csv": "output/validation.csv",
         "schema_report": "output/input_schema.yaml",
-        "fail_on_validation_errors": True,
+        "fail_on_validation_errors": False,
     }
     project_path = run_dir / "project.yaml"
     project_path.write_text(
@@ -384,6 +490,16 @@ def _write_loaded_project(
     return project_path
 
 
+def _resolve_decision_weights(
+    weights: dict[str, float] | str | None,
+) -> dict[str, float]:
+    if weights is None:
+        return weights_from_env()
+    if isinstance(weights, str):
+        return parse_weights_string(weights)
+    return normalize_topsis_weights(weights)
+
+
 def _load_and_run_input(
     loaded: LoadedFile,
     *,
@@ -391,11 +507,27 @@ def _load_and_run_input(
     sample_rows: int | None,
     use_llm: bool,
     on_progress: ProgressReporter = None,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
+    strategy: ConversionStrategy | str | None = None,
+    confirmed_mapping: dict[str, Any] | MappingConfig | None = None,
 ) -> ExecutionOutcome:
     run_dir = work_dir or (Path("output") / "loaded" / _sanitize_run_name(loaded.path))
     run_dir.mkdir(parents=True, exist_ok=True)
     emit_progress(on_progress, f"Directorio de trabajo: {run_dir.resolve()}")
-    data_paths = _bundle_data_paths(loaded.members or (loaded.path,))
+    data_paths = _select_conversion_paths(
+        loaded.members or (loaded.path,),
+        on_progress=on_progress,
+    )
+    if not data_paths:
+        return ExecutionOutcome(
+            False,
+            "load",
+            "Ningún archivo del paquete aporta capas eléctricas para construir el DGS. "
+            "Se omitieron vías, zonas, retenidas, PAT, estructuras, UAP y similares.",
+            {"source": str(loaded.path)},
+        )
     bundle_assessment = None
     if len(data_paths) > 1:
         emit_progress(on_progress, "[Paquete] Analizando coherencia multi-archivo…")
@@ -430,30 +562,114 @@ def _load_and_run_input(
         emit_progress(on_progress, f"ERROR inspección: {inspect.message}")
         return ExecutionOutcome(False, "load", inspect.message, inspect.payload)
     emit_progress(on_progress, inspect.message)
-    emit_progress(on_progress, "[Mapping] Proponiendo mapping (NSGA-II + TOPSIS)…")
-    suggested = suggest_mapping_for_loaded(
-        loaded,
-        output=run_dir / "config" / "mapping.yaml",
-        sample_rows=sample_rows,
-        use_llm=use_llm,
-        on_progress=on_progress,
-    )
-    if not suggested.success:
-        emit_progress(on_progress, f"ERROR mapping: {suggested.message}")
-        return ExecutionOutcome(False, "load", suggested.message, suggested.payload)
-    mapping = suggested.payload.get("mapping")
-    if not isinstance(mapping, dict):
-        return ExecutionOutcome(
-            False,
-            "load",
-            "No se obtuvo mapping para convertir.",
-            suggested.payload,
+
+    weight_map = _resolve_decision_weights(weights)
+    decision_payload: dict[str, Any] = {}
+    if confirmed_mapping is not None:
+        emit_progress(on_progress, "[Mapping] Usando mapping confirmado por el usuario…")
+        if isinstance(confirmed_mapping, MappingConfig):
+            mapping_cfg = confirmed_mapping
+            mapping = mapping_to_yaml_payload(mapping_cfg)
+        else:
+            mapping = dict(confirmed_mapping)
+            mapping_cfg = MappingConfig.model_validate(mapping)
+        suggested = ExecutionOutcome(
+            True,
+            "suggest-mapping",
+            "Mapping confirmado.",
+            {"mapping": mapping, "modality": "confirmed"},
         )
+    else:
+        emit_progress(
+            on_progress,
+            "[Mapping] Proponiendo mapping multiobjetivo (NSGA-II + TOPSIS)…",
+        )
+        suggested = suggest_mapping_for_loaded(
+            loaded,
+            output=run_dir / "config" / "mapping.yaml",
+            sample_rows=sample_rows,
+            use_llm=use_llm,
+            on_progress=on_progress,
+            paths=data_paths,
+            modality=modality,
+            weights=weight_map,
+            pareto_index=pareto_index,
+        )
+        if not suggested.success:
+            emit_progress(on_progress, f"ERROR mapping: {suggested.message}")
+            return ExecutionOutcome(False, "load", suggested.message, suggested.payload)
+        mapping = suggested.payload.get("mapping")
+        if not isinstance(mapping, dict):
+            return ExecutionOutcome(
+                False,
+                "load",
+                "No se obtuvo mapping para convertir.",
+                suggested.payload,
+            )
+        mapping_cfg = MappingConfig.model_validate(mapping)
+        decision_payload = {
+            "modality": suggested.payload.get("modality"),
+            "selected_index": suggested.payload.get("selected_index"),
+            "selected_objectives": suggested.payload.get("selected_objectives"),
+            "pareto_size": suggested.payload.get("pareto_size"),
+            "weights": suggested.payload.get("weights") or weight_map,
+        }
+
     if bundle_assessment is not None and _is_cymdist_data_bundle(bundle_assessment):
         emit_progress(on_progress, "[Mapping] Aplicando plantilla CYMDIST…")
         mapping = _merge_mapping_seed(_cymdist_seed_mapping(), mapping)
+        mapping_cfg = MappingConfig.model_validate(mapping)
+
+    # Multimodal conversion strategy selection.
+    schema = discover_schema(
+        _read_input_paths(data_paths, sample_rows=sample_rows),
+        sample_rows=sample_rows if sample_rows is not None else env_sample_rows(),
+    )
+    strategy_decision = select_conversion_strategy(
+        mapping_cfg,
+        schema,
+        strategy=strategy,
+        weights=weight_map,
+        modality_hint=(
+            "cymdist"
+            if bundle_assessment is not None and _is_cymdist_data_bundle(bundle_assessment)
+            else None
+        ),
+    )
+    mapping_cfg = strategy_decision.candidates[strategy_decision.selected_index].mapping
+    mapping = mapping_to_yaml_payload(mapping_cfg)
+    decision_report = {
+        **decision_payload,
+        "conversion_strategy": strategy_decision.report,
+    }
+    decision_path = run_dir / "output" / "decision_report.yaml"
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(
+        yaml.safe_dump(decision_report, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    emit_progress(
+        on_progress,
+        f"[Decisión] Modalidad entrada={strategy_decision.modality.value} | "
+        f"estrategia={strategy_decision.selected.value} | "
+        f"informe={decision_path}",
+    )
+    # Persist the strategy-selected mapping for convert.
+    mapping_path = run_dir / "config" / "mapping.yaml"
+    mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    mapping_path.write_text(
+        yaml.safe_dump(mapping, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
     emit_progress(on_progress, f"[Proyecto] Escribiendo project.yaml en {run_dir}…")
-    sources = _sources_for_paths(data_paths)
+    sources = _sources_for_paths(data_paths, mapping=mapping)
+    if len(sources) < len(_bundle_data_paths(data_paths)):
+        emit_progress(
+            on_progress,
+            f"[Proyecto] Conversión con {len(sources)} fuente(s) mapeada(s) "
+            f"(de {len(_bundle_data_paths(data_paths))} eléctricas).",
+        )
     for source in sources:
         emit_progress(
             on_progress,
@@ -492,6 +708,8 @@ def _load_and_run_input(
         "project": str(project_path),
         "schema": inspect.payload,
         "mapping": mapping,
+        "decision": decision_report,
+        "decision_report": str(decision_path),
         "conversion": converted.payload,
     }
     if not converted.success:
@@ -514,6 +732,10 @@ def _load_and_run_uri(
     sample_rows: int | None,
     use_llm: bool,
     on_progress: ProgressReporter = None,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
+    strategy: ConversionStrategy | str | None = None,
 ) -> ExecutionOutcome:
     run_dir = work_dir or (Path("output") / "loaded" / "database")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -534,6 +756,9 @@ def _load_and_run_uri(
         output=run_dir / "config" / "mapping.yaml",
         sample_rows=sample_rows,
         use_llm=use_llm,
+        modality=modality,
+        weights=weights,
+        pareto_index=pareto_index,
     )
     if not suggested.success:
         emit_progress(on_progress, f"ERROR mapping: {suggested.message}")
@@ -541,6 +766,65 @@ def _load_and_run_uri(
     mapping = suggested.payload.get("mapping")
     if not isinstance(mapping, dict):
         return ExecutionOutcome(False, "load", "No se obtuvo mapping.", suggested.payload)
+    mapping_cfg = MappingConfig.model_validate(mapping)
+    weight_map = _resolve_decision_weights(weights)
+    decision_payload = {
+        "modality": suggested.payload.get("modality"),
+        "selected_index": suggested.payload.get("selected_index"),
+        "selected_objectives": suggested.payload.get("selected_objectives"),
+        "pareto_size": suggested.payload.get("pareto_size"),
+        "weights": suggested.payload.get("weights") or weight_map,
+    }
+
+    # Multimodal conversion strategy (same criteria as file packages).
+    budget = sample_rows if sample_rows is not None else env_sample_rows()
+    try:
+        dataset = InputReaderFactory.create(
+            uri,
+            kind=InputKind.AUTO,
+            source_id="network_db",
+            options=_reader_options(budget),
+        ).read()
+        schema = discover_schema(dataset, sample_rows=budget)
+    except (InputError, UnsupportedInputError, OSError, ValueError) as exc:
+        return ExecutionOutcome(
+            False,
+            "load",
+            f"No se pudo evaluar estrategias de conversión: {exc}",
+            suggested.payload,
+        )
+    strategy_decision = select_conversion_strategy(
+        mapping_cfg,
+        schema,
+        strategy=strategy,
+        weights=weight_map,
+        modality_hint="database",
+    )
+    mapping_cfg = strategy_decision.candidates[strategy_decision.selected_index].mapping
+    mapping = mapping_to_yaml_payload(mapping_cfg)
+    decision_report = {
+        **decision_payload,
+        "conversion_strategy": strategy_decision.report,
+    }
+    decision_path = run_dir / "output" / "decision_report.yaml"
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(
+        yaml.safe_dump(decision_report, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    emit_progress(
+        on_progress,
+        f"[Decisión] Modalidad entrada={strategy_decision.modality.value} | "
+        f"estrategia={strategy_decision.selected.value} | "
+        f"informe={decision_path}",
+    )
+    mapping_path = run_dir / "config" / "mapping.yaml"
+    mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    mapping_path.write_text(
+        yaml.safe_dump(mapping, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
     emit_progress(on_progress, f"[Proyecto] Escribiendo project.yaml…")
     sources = [{"id": "network_db", "uri": uri, "kind": "database"}]
     project_path = _write_loaded_project(
@@ -550,13 +834,14 @@ def _load_and_run_uri(
         name="database",
     )
     if mapping.get("buses") is None:
-        mapping_path = run_dir / "config" / "mapping.yaml"
         payload = {
             "source": uri,
             "project": str(project_path),
             "mapping_path": str(mapping_path),
             "schema": inspect.payload,
             "mapping": mapping,
+            "decision": decision_report,
+            "decision_report": str(decision_path),
         }
         return ExecutionOutcome(
             False,
@@ -573,6 +858,8 @@ def _load_and_run_uri(
         "project": str(project_path),
         "schema": inspect.payload,
         "mapping": mapping,
+        "decision": decision_report,
+        "decision_report": str(decision_path),
         "conversion": converted.payload,
     }
     if not converted.success:
@@ -610,6 +897,10 @@ def suggest_mapping_for_loaded(
     sample_rows: int | None = None,
     use_llm: bool = False,
     on_progress: ProgressReporter = None,
+    paths: tuple[Path, ...] | None = None,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
 ) -> ExecutionOutcome:
     """Propose mapping YAML from a loaded input or project. Does not write DGS."""
 
@@ -624,6 +915,11 @@ def suggest_mapping_for_loaded(
         )
     emit_progress(on_progress, "[Mapping] Analizando esquema para propuesta…")
     budget = sample_rows if sample_rows is not None else env_sample_rows()
+    weight_map = _resolve_decision_weights(weights)
+    chosen = parse_modality(modality)
+    if use_llm and chosen is DecisionModality.NSGA_TOPSIS:
+        # Keep legacy --llm as refinement after TOPSIS unless modality=llm.
+        pass
     try:
         if loaded.kind is LoadedFileKind.PROJECT:
             project = load_project_config(loaded.path)
@@ -632,12 +928,28 @@ def suggest_mapping_for_loaded(
                 sample_rows=budget,
             )
         else:
-            paths = loaded.members or (loaded.path,)
+            input_paths = paths or _select_conversion_paths(
+                loaded.members or (loaded.path,),
+                on_progress=on_progress,
+            )
+            if not input_paths:
+                return ExecutionOutcome(
+                    False,
+                    "suggest-mapping",
+                    "Ningún archivo aporta capas eléctricas para proponer mapping.",
+                    {"path": str(loaded.path)},
+                )
             schema = discover_schema(
-                _read_input_paths(paths, sample_rows=budget),
+                _read_input_paths(input_paths, sample_rows=budget),
                 sample_rows=budget,
             )
-        suggestion = suggest_mapping(schema, use_llm=use_llm)
+        suggestion = suggest_mapping(
+            schema,
+            use_llm=use_llm or chosen is DecisionModality.LLM,
+            modality=chosen,
+            weights=weight_map,
+            pareto_index=pareto_index,
+        )
     except (InputError, UnsupportedInputError, OSError, ValueError) as exc:
         emit_progress(on_progress, f"ERROR mapping: {exc}")
         return ExecutionOutcome(
@@ -653,6 +965,11 @@ def suggest_mapping_for_loaded(
                 on_progress,
                 f"[Mapping] {layer}: tabla {mapping[layer].get('source', '?')}",
             )
+    emit_progress(
+        on_progress,
+        f"[Mapping] Modalidad={suggestion.modality.value} | "
+        f"Pareto={len(suggestion.pareto)} | índice={suggestion.selected_index}",
+    )
     emit_progress(on_progress, "[Mapping] Propuesta completada.")
     return _outcome_from_suggestion(suggestion, output)
 
@@ -664,8 +981,13 @@ def suggest_mapping_for_uri(
     kind: InputKind = InputKind.AUTO,
     sample_rows: int | None = None,
     use_llm: bool = False,
+    modality: DecisionModality | str | None = None,
+    weights: dict[str, float] | str | None = None,
+    pareto_index: int | None = None,
 ) -> ExecutionOutcome:
     budget = sample_rows if sample_rows is not None else env_sample_rows()
+    weight_map = _resolve_decision_weights(weights)
+    chosen = parse_modality(modality)
     try:
         dataset = InputReaderFactory.create(
             uri,
@@ -674,7 +996,13 @@ def suggest_mapping_for_uri(
             options=_reader_options(budget),
         ).read()
         schema = discover_schema(dataset, sample_rows=budget)
-        suggestion = suggest_mapping(schema, use_llm=use_llm)
+        suggestion = suggest_mapping(
+            schema,
+            use_llm=use_llm or chosen is DecisionModality.LLM,
+            modality=chosen,
+            weights=weight_map,
+            pareto_index=pareto_index,
+        )
     except (InputError, UnsupportedInputError, OSError, ValueError) as exc:
         return ExecutionOutcome(
             False,
@@ -689,7 +1017,13 @@ def _outcome_from_suggestion(
     suggestion: MappingSuggestion, output: Path | None
 ) -> ExecutionOutcome:
     mapping_payload = mapping_to_yaml_payload(suggestion.mapping)
-    report_payload = {**suggestion.report, "pareto": list(suggestion.pareto)}
+    report_payload = {
+        **suggestion.report,
+        "pareto": list(suggestion.pareto),
+        "modality": suggestion.modality.value,
+        "selected_index": suggestion.selected_index,
+        "weights": dict(suggestion.weights),
+    }
     written: dict[str, str] = {}
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -723,13 +1057,20 @@ def _outcome_from_suggestion(
         True,
         "suggest-mapping",
         "Mapping propuesto (NSGA-II + TOPSIS). "
+        f"Modalidad={suggestion.modality.value}; "
+        f"Pareto={len(suggestion.pareto)}; índice={suggestion.selected_index}. "
         f"Entidades: {', '.join(mapped) or '(ninguna)'}. "
         "Revise el YAML y úselo en project.yaml; la conversión sigue el pipeline "
         f"NetworkModel → validación → DGS.{warning_text}",
         {
             "mapping": mapping_payload,
             "report": suggestion.report,
+            "pareto": list(suggestion.pareto),
             "pareto_size": suggestion.report.get("pareto_size"),
+            "modality": suggestion.modality.value,
+            "selected_index": suggestion.selected_index,
+            "selected_objectives": suggestion.report.get("selected_objectives"),
+            "weights": dict(suggestion.weights),
             **written,
         },
     )
@@ -966,15 +1307,20 @@ def _reader_options(sample_rows: int | None) -> dict[str, Any]:
 
 
 def _read_input_paths(paths: tuple[Path, ...], *, sample_rows: int | None) -> Any:
-    datasets = [
-        InputReaderFactory.create(
-            str(path),
-            kind=InputKind.AUTO,
-            source_id=path.stem,
-            options=_reader_options(sample_rows),
-        ).read()
-        for path in _bundle_data_paths(paths)
-    ]
+    datasets = []
+    for path in _bundle_data_paths(paths):
+        kind = detect_input_kind(path)
+        options = _reader_options(sample_rows)
+        if kind in {InputKind.CSV, InputKind.EXCEL}:
+            options["table_name"] = path.stem
+        datasets.append(
+            InputReaderFactory.create(
+                str(path),
+                kind=kind,
+                source_id=path.stem,
+                options=options,
+            ).read()
+        )
     return enrich_cymdist_tables(
         merge_datasets(datasets, on_conflict="overwrite")
     )

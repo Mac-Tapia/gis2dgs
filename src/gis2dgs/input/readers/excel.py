@@ -17,6 +17,7 @@ class ExcelInputReader:
         source_id: str | None = None,
         sheets: tuple[str, ...] | None = None,
         aliases: dict[str, str] | None = None,
+        table_name: str | None = None,
         sample_rows: int | None = None,
         compact: bool = True,
         copy_frame: bool = False,
@@ -25,6 +26,7 @@ class ExcelInputReader:
         self.source_id = source_id
         self.sheets = sheets
         self.aliases = dict(aliases or {})
+        self.table_name = table_name
         self.sample_rows = sample_rows
         self.compact = compact
         self.copy_frame = copy_frame
@@ -52,8 +54,12 @@ class ExcelInputReader:
             raise InputError(f"Unable to read Excel input {self.path}: {exc}") from exc
 
         result = InputDataset()
+        single_sheet = len(frames) == 1
         for sheet, frame in frames.items():
-            logical = self.aliases.get(sheet, sheet)
+            if self.table_name and single_sheet:
+                logical = self.table_name
+            else:
+                logical = self.aliases.get(sheet, sheet)
             if self.compact:
                 frame = compact_frame(frame, copy=False)
             result.add_table(

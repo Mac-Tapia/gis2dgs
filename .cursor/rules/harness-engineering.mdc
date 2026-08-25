@@ -6,6 +6,7 @@ alwaysApply: true
 # Agent harness (GIS2DGS)
 
 Agent = Model + Harness. This repo's harness is AGENTS.md + skills + `.cursor/hooks` + `scripts/agent_harness`.
+Optional autonomous runner: Hermes Agent via `.agents/skills` — see `docs/HERMES_AGENT.md`.
 
 ## Always
 

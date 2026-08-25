@@ -307,3 +307,276 @@ def test_suggest_mapping_does_not_use_commissioning_date_as_bus_name() -> None:
     assert suggestion.mapping.buses is not None
     assert suggestion.mapping.buses.fields["id"] == "CodAcometida"
     assert suggestion.mapping.buses.fields.get("name") != "FecPuestaServicio"
+
+
+def test_suggest_mapping_rejects_district_as_to_bus_and_prefers_bt_tramo() -> None:
+    schema = DatasetSchema(
+        tables=(
+            TableSchema(
+                "BD_SED",
+                100,
+                (
+                    _column("ID", "int32", 100),
+                    _column("CÓDIGO", unique=100),
+                    _column("TENSIÓN NOMINAL MT (KV)", unique=4),
+                    _column("CANT FASE", "int8", 3),
+                    ColumnSchema("Descripción", "float32", True, 0, 0),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_Tramo AT",
+                50,
+                (
+                    _column("ID", "int32", 50),
+                    _column("CÓDIGO TRAMO PADRE", "float32", 40),
+                    _column("DISTRITO", unique=10),
+                    _column("LONGITUD REAL (M)", "float64", 50),
+                    _column("NIVEL DE TENSIÓN (KV)", unique=2),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_Tramo BT",
+                200,
+                (
+                    _column("ID", "int32", 200),
+                    _column("CÓDIGO TRAMO PADRE", "object", 180),
+                    _column("SALIDA SED", unique=40),
+                    _column("LONGITUD REAL (m)", "float32", 200),
+                    _column("NIVEL DE TENSION (KV)", unique=3),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_Salida MT",
+                20,
+                (
+                    _column("ID", "int32", 20),
+                    _column("SET", unique=5),
+                    _column("NIVEL DE TENSIÓN", unique=2),
+                    ColumnSchema("Descripción", "float32", True, 0, 0),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_Salida AT",
+                10,
+                (
+                    _column("ID", "int32", 10),
+                    _column("SET", unique=4),
+                    ColumnSchema("Descripción", "float32", True, 0, 0),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+        )
+    )
+    suggestion = suggest_mapping(schema, seed=5, population_size=20, generations=10)
+    assert suggestion.mapping.lines is not None
+    assert suggestion.mapping.lines.source == "BD_Tramo BT"
+    assert suggestion.mapping.lines.fields.get("to_bus") != "DISTRITO"
+    assert suggestion.mapping.lines.fields.get("to_bus") in {
+        "ID",
+        suggestion.mapping.lines.fields.get("id"),
+    }
+    if suggestion.mapping.buses is not None:
+        assert suggestion.mapping.buses.fields.get("x") != "CANT FASE"
+        assert suggestion.mapping.buses.fields.get("name") != "Descripción"
+    if suggestion.mapping.sources is not None:
+        assert suggestion.mapping.sources.source in {"BD_Salida MT", "BD_Salida AT"}
+        assert suggestion.mapping.sources.fields.get("nominal_voltage_kv") != "Descripción"
+
+
+def test_infer_active_power_unit_prefers_kw_for_pac() -> None:
+    from gis2dgs.assist.service import _infer_active_power_unit
+
+    assert _infer_active_power_unit("PAC") == "kW"
+    assert _infer_active_power_unit("potencia_kw") == "kW"
+    assert _infer_active_power_unit("p_mw") == "MW"
+    assert _infer_active_power_unit("MÁXIMA DEMANDA (kW)") == "kW"
+
+
+def test_sanitize_load_power_rejects_ubicacion_as_reactive() -> None:
+    from gis2dgs.assist.service import _sanitize_load_power_fields
+
+    table = TableSchema(
+        "BD_Acometidas",
+        100,
+        (
+            ColumnSchema("ID", "int32", False, 100, 100),
+            ColumnSchema("SED", "str", False, 100, 20),
+            ColumnSchema("PAC", "float32", True, 80, 30),
+            ColumnSchema("UBICACION GEOGRAFICA", "int32", False, 100, 10),
+        ),
+        False,
+        None,
+        None,
+        None,
+    )
+    fields = {
+        "id": "ID",
+        "bus_id": "SED",
+        "active_power_mw": "PAC",
+        "reactive_power_mvar": "UBICACION GEOGRAFICA",
+    }
+    _sanitize_load_power_fields(table, fields)
+    assert fields["active_power_mw"] == "PAC"
+    assert "reactive_power_mvar" not in fields
+
+
+def test_suggest_mapping_acometidas_pac_defaults_and_kw_unit() -> None:
+    dataset = InputDataset()
+    dataset.add_table(
+        "buses",
+        pd.DataFrame({"id": ["B1"], "voltage_kv": [10.0]}),
+    )
+    dataset.add_table(
+        "lines",
+        pd.DataFrame(
+            {
+                "id": ["L1"],
+                "from_bus": ["B1"],
+                "to_bus": ["B1"],
+                "length_km": [0.1],
+                "voltage_kv": [10.0],
+            }
+        ),
+    )
+    dataset.add_table(
+        "BD_Acometidas",
+        pd.DataFrame(
+            {
+                "ID": [1, 2],
+                "SED": ["B1", "B1"],
+                "PAC": [33.0, None],
+                "UBICACION GEOGRAFICA": [10, 20],
+                "METER": ["M1", "M2"],
+            }
+        ),
+    )
+    suggestion = suggest_mapping(
+        discover_schema(dataset), seed=9, population_size=16, generations=8
+    )
+    assert suggestion.mapping.loads is not None
+    assert suggestion.mapping.loads.source == "BD_Acometidas"
+    assert suggestion.mapping.loads.fields.get("active_power_mw") == "PAC"
+    assert suggestion.mapping.loads.units.get("active_power_mw") == "kW"
+    assert suggestion.mapping.loads.defaults.get("active_power_mw") == 0.0
+    assert suggestion.mapping.loads.fields.get("reactive_power_mvar") != "UBICACION GEOGRAFICA"
+
+
+def test_sanitize_bus_id_prefers_codigo_over_surrogate_id() -> None:
+    from gis2dgs.assist.service import _sanitize_bus_id_field
+
+    table = TableSchema(
+        "BD_SED",
+        3,
+        (
+            ColumnSchema("ID", "int32", False, 3, 3),
+            ColumnSchema("CÓDIGO", "str", False, 3, 3),
+            ColumnSchema("CÓDIGO NORMA", "str", False, 3, 2),
+            ColumnSchema("TENSIÓN NOMINAL MT (KV)", "str", False, 3, 2),
+        ),
+        False,
+        None,
+        None,
+        None,
+    )
+    fields = {"id": "ID", "nominal_voltage_kv": "TENSIÓN NOMINAL MT (KV)"}
+    _sanitize_bus_id_field(table, fields)
+    assert fields["id"] == "CÓDIGO"
+
+
+def test_prefer_candidate_with_buses_over_busless_topsis() -> None:
+    """When the front has buses, TOPSIS must not leave convert blocked."""
+
+    dataset = InputDataset()
+    dataset.add_table(
+        "BD_SED",
+        pd.DataFrame(
+            {
+                "ID": [1, 2],
+                "CÓDIGO": ["SE1", "SE2"],
+                "TENSIÓN NOMINAL MT (KV)": ["10,0", "22,9"],
+                "NOMBRE": ["A", "B"],
+            }
+        ),
+    )
+    dataset.add_table(
+        "BD_Tramo AT",
+        pd.DataFrame(
+            {
+                "ID": [10, 11],
+                "CÓDIGO TRAMO PADRE": [11, 10],
+                "LONGITUD REAL (M)": [100.0, 200.0],
+                "NIVEL DE TENSIÓN (KV)": [10.0, 10.0],
+                "TIPO DE TENDIDO": ["AEREO", "AEREO"],
+                "ESTADO INSTALACIÓN": ["OPERATIVO", "OPERATIVO"],
+            }
+        ),
+    )
+    dataset.add_table(
+        "BD_Acometidas",
+        pd.DataFrame(
+            {
+                "ID": [1],
+                "SED": ["SE1"],
+                "PAC": [5.0],
+                "METER": ["M1"],
+                "ESTADO INSTALACIÓN": ["OPERATIVO"],
+            }
+        ),
+    )
+    dataset.add_table(
+        "BD_AMT",
+        pd.DataFrame(
+            {
+                "ID": [1],
+                "SET": ["S1"],
+                "TENSIÓN NOMINAL": [10.0],
+                "LOCALIDAD": ["L1"],
+                "Existe desde": ["2020"],
+            }
+        ),
+    )
+    dataset.add_table(
+        "BD_SET",
+        pd.DataFrame({"ID": [1], "NOMBRE": ["SET1"]}),
+    )
+    suggestion = suggest_mapping(
+        discover_schema(dataset),
+        seed=6,
+        population_size=24,
+        generations=10,
+    )
+    assert suggestion.mapping.buses is not None
+    assert suggestion.mapping.buses.source == "BD_SED"
+    assert suggestion.mapping.buses.fields["id"] == "CÓDIGO"
+    assert any(
+        (item.get("summary") or {}).get("buses") == "BD_SED" for item in suggestion.pareto
+    )
+
+
+def test_voltage_column_type_ok_for_string_kv() -> None:
+    from gis2dgs.assist.service import _voltage_column_type_ok
+
+    assert _voltage_column_type_ok(
+        ColumnSchema("TENSIÓN NOMINAL MT (KV)", "str", False, 10, 4)
+    )
+    assert _voltage_column_type_ok(ColumnSchema("voltage_kv", "float64", False, 10, 2))
+    assert not _voltage_column_type_ok(ColumnSchema("nombre", "str", False, 10, 8))

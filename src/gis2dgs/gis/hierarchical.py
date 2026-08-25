@@ -24,6 +24,17 @@ def _normalize_token(value: str) -> str:
     return _TOKEN_SPLIT.sub("", ascii_only)
 
 
+def _parent_identifier(value: object) -> str:
+    """Normalize parent refs; accept ``977870 - LABEL`` inventory encodings."""
+
+    text = str(value).strip()
+    if " - " in text:
+        text = text.split(" - ", 1)[0].strip()
+    elif " – " in text:
+        text = text.split(" – ", 1)[0].strip()
+    return normalize_identifier(text)
+
+
 def detect_parent_column(columns: tuple[str, ...] | list[str]) -> str | None:
     """Return a line-table column that encodes a parent segment reference, if any."""
 
@@ -37,6 +48,7 @@ def detect_parent_column(columns: tuple[str, ...] | list[str]) -> str | None:
         "codtramobtpadre",
         "codtramomtpadre",
         "tramopadre",
+        "codigotramopadre",
     )
     for name in columns:
         token = _normalize_token(name)
@@ -69,6 +81,45 @@ def detect_feeder_column(columns: tuple[str, ...] | list[str]) -> str | None:
     return best_name
 
 
+def _ensure_identifier_column(frame: pd.DataFrame, name: str) -> None:
+    """Ensure a column can store normalized string identifiers (not compact float/int)."""
+
+    if name not in frame.columns:
+        frame[name] = pd.Series([pd.NA] * len(frame), dtype=object)
+        return
+    series = frame[name]
+    if pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series):
+        return
+    frame[name] = series.astype(object)
+
+
+def _column_holds_identifiers(series: pd.Series) -> bool:
+    return bool(
+        pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series)
+    )
+
+
+def _is_non_endpoint_column(name: str) -> bool:
+    token = _normalize_token(name)
+    return any(
+        marker in token
+        for marker in (
+            "distrito",
+            "district",
+            "jerarquia",
+            "localidad",
+            "ubicacion",
+            "direccion",
+            "provincia",
+            "departamento",
+            "zona",
+            "estado",
+            "fecha",
+            "color",
+        )
+    )
+
+
 def apply_hierarchical_line_endpoints(
     lines: gpd.GeoDataFrame,
     *,
@@ -79,35 +130,66 @@ def apply_hierarchical_line_endpoints(
     to_bus_field: str = "to_bus",
     root_parent_markers: frozenset[str] = ROOT_PARENT_MARKERS,
 ) -> gpd.GeoDataFrame:
-    """Fill line endpoint columns from parent/feeder hierarchy without mutating other columns."""
+    """Fill line endpoint columns from parent/feeder hierarchy without mutating other columns.
+
+    Resolved endpoints are always written to object-dtype ``from_bus`` / ``to_bus``
+    columns when the mapped fields reuse compact numeric inventory columns (float32
+    parent codes) or non-endpoint attributes (district, locality, etc.). That avoids
+    ``TypeError: Invalid value '…' for dtype 'float32'`` from pandas ``.at`` writes.
+    """
 
     result = lines.copy()
-    if from_bus_field not in result.columns:
-        result[from_bus_field] = pd.NA
-    if to_bus_field not in result.columns:
-        result[to_bus_field] = pd.NA
+    write_from = from_bus_field
+    write_to = to_bus_field
+
+    if from_bus_field in result.columns and (
+        from_bus_field == parent_field
+        or not _column_holds_identifiers(result[from_bus_field])
+        or _is_non_endpoint_column(from_bus_field)
+    ):
+        write_from = "from_bus"
+    if to_bus_field in result.columns and (
+        to_bus_field == parent_field
+        or to_bus_field == from_bus_field
+        or not _column_holds_identifiers(result[to_bus_field])
+        or _is_non_endpoint_column(to_bus_field)
+    ):
+        write_to = "to_bus"
+    if write_from == write_to:
+        write_from = "from_bus"
+        write_to = "to_bus"
+
+    _ensure_identifier_column(result, write_from)
+    _ensure_identifier_column(result, write_to)
 
     for index, row in result.iterrows():
         line_id = normalize_identifier(row[line_id_field])
-        from_raw = row.get(from_bus_field)
-        to_raw = row.get(to_bus_field)
-        from_id = (
-            None if is_missing(from_raw) else normalize_identifier(from_raw)
-        )
+        # Prefer already-resolved dedicated columns; otherwise read mapped fields.
+        from_raw = row.get(write_from) if write_from in row.index else None
+        if is_missing(from_raw) and from_bus_field in row.index and write_from != from_bus_field:
+            from_raw = row.get(from_bus_field)
+        to_raw = row.get(write_to) if write_to in row.index else None
+        if is_missing(to_raw) and to_bus_field in row.index and write_to != to_bus_field:
+            # Mapped to_bus may be a non-endpoint column; ignore it for distal id.
+            if not _is_non_endpoint_column(to_bus_field):
+                to_raw = row.get(to_bus_field)
+            else:
+                to_raw = None
+        from_id = None if is_missing(from_raw) else normalize_identifier(from_raw)
         to_id = None if is_missing(to_raw) else normalize_identifier(to_raw)
         if (
             to_id is not None
             and from_id is not None
             and from_id not in root_parent_markers
             and from_id != line_id
+            and write_from == from_bus_field
+            and write_to == to_bus_field
         ):
             continue
 
         parent_raw = row[parent_field]
         parent_id = (
-            None
-            if is_missing(parent_raw)
-            else normalize_identifier(parent_raw)
+            None if is_missing(parent_raw) else _parent_identifier(parent_raw)
         )
         feeder_id = None
         if feeder_field is not None and feeder_field in row.index:
@@ -125,9 +207,11 @@ def apply_hierarchical_line_endpoints(
         if resolved_from is None:
             continue
 
-        result.at[index, from_bus_field] = resolved_from
-        result.at[index, to_bus_field] = to_id if to_id is not None else line_id
+        result.at[index, write_from] = resolved_from
+        result.at[index, write_to] = to_id if to_id is not None else line_id
 
+    result.attrs["hierarchical_from_bus_field"] = write_from
+    result.attrs["hierarchical_to_bus_field"] = write_to
     return result
 
 
@@ -142,9 +226,12 @@ def synthesize_endpoint_buses(
 ) -> gpd.GeoDataFrame:
     """Append placeholder bus rows for line endpoints missing from the configured bus layer."""
 
+    buses_table = buses.copy()
+    _ensure_identifier_column(buses_table, bus_id_field)
+
     existing = {
         normalize_identifier(value)
-        for value in buses[bus_id_field].tolist()
+        for value in buses_table[bus_id_field].tolist()
         if not is_missing(value)
     }
     needed: set[str] = set()
@@ -159,7 +246,7 @@ def synthesize_endpoint_buses(
                 needed.add(bus_id)
 
     if not needed:
-        return buses
+        return buses_table
 
     voltage_field = bus_mapping.fields.get("nominal_voltage_kv")
     default_voltage = bus_mapping.defaults.get("nominal_voltage_kv", 1.0)
@@ -171,8 +258,11 @@ def synthesize_endpoint_buses(
         extra_rows.append(row)
 
     extension = pd.DataFrame(extra_rows)
-    combined = pd.concat([buses.drop(columns=["geometry"], errors="ignore"), extension], ignore_index=True)
-    crs = safe_frame_crs(buses)
+    combined = pd.concat(
+        [buses_table.drop(columns=["geometry"], errors="ignore"), extension],
+        ignore_index=True,
+    )
+    crs = safe_frame_crs(buses_table)
     return gpd.GeoDataFrame(combined).set_geometry(
         GeoSeries([None] * len(combined), crs=crs),
         crs=crs,
@@ -225,6 +315,12 @@ def prepare_hierarchical_connectivity(
         from_bus_field=from_bus_field,
         to_bus_field=to_bus_field,
     )
+    from_bus_field = str(
+        updated_lines.attrs.get("hierarchical_from_bus_field", from_bus_field)
+    )
+    to_bus_field = str(
+        updated_lines.attrs.get("hierarchical_to_bus_field", to_bus_field)
+    )
     updated_buses = synthesize_endpoint_buses(
         dataset.layer(bus_layer),
         updated_lines,
@@ -234,8 +330,8 @@ def prepare_hierarchical_connectivity(
         to_bus_field=to_bus_field,
     )
 
-    line_mapping.fields.setdefault("from_bus", from_bus_field)
-    line_mapping.fields.setdefault("to_bus", to_bus_field)
+    line_mapping.fields["from_bus"] = from_bus_field
+    line_mapping.fields["to_bus"] = to_bus_field
 
     updated = GisDataset()
     for name, frame in dataset.layers.items():

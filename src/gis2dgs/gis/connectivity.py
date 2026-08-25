@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import geopandas as gpd
+import pandas as pd
 from pyproj import CRS
 from shapely.geometry import LineString, Point
 from shapely.strtree import STRtree
@@ -204,6 +205,15 @@ def apply_connection_proposal(
     """Return a copy with only unambiguous proposed references applied."""
 
     result = lines.copy()
+    for field_name in (from_bus_field, to_bus_field):
+        if field_name not in result.columns:
+            result[field_name] = pd.Series([pd.NA] * len(result), dtype=object)
+        elif not (
+            pd.api.types.is_object_dtype(result[field_name])
+            or pd.api.types.is_string_dtype(result[field_name])
+        ):
+            result[field_name] = result[field_name].astype(object)
+
     index_by_line: dict[str, object] = {}
     for index, value in result[line_id_field].items():
         line_id = normalize_identifier(value)
