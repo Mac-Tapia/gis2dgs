@@ -1,3 +1,6 @@
+from datetime import date, datetime
+
+import pandas as pd
 import pytest
 
 from gis2dgs.gis.normalizer import (
@@ -47,6 +50,12 @@ def test_normalize_in_service(value: object) -> None:
 )
 def test_normalize_out_of_service(value: object) -> None:
     assert normalize_service_state(value) is False
+
+
+def test_normalize_service_state_accepts_commissioning_timestamp() -> None:
+    assert normalize_service_state(pd.Timestamp("2023-01-01")) is True
+    assert normalize_service_state(datetime(2023, 1, 1)) is True
+    assert normalize_service_state(date(2023, 1, 1)) is True
 
 
 def test_identifier_strips_whitespace() -> None:

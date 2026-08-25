@@ -484,6 +484,28 @@ def _column_match_score(spec: FieldSpec, column: ColumnSchema) -> float:
             score = min(1.0, score + 0.15)
         elif token in {"codigo", "code", "id", "fid"}:
             score *= 0.15
+    if spec.name == "in_service":
+        if (
+            "datetime" in dtype
+            or "timestamp" in dtype
+            or dtype in {"date", "datetime64[ns]", "datetime64[us]"}
+        ):
+            score *= 0.05
+        if any(
+            marker in token
+            for marker in (
+                "fec",
+                "fecha",
+                "date",
+                "datetime",
+                "timestamp",
+                "existe",
+                "desde",
+                "puesta",
+                "commission",
+            )
+        ):
+            score *= 0.05
     if spec.name == "name":
         if (
             "datetime" in dtype

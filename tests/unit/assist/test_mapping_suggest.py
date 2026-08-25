@@ -309,6 +309,25 @@ def test_suggest_mapping_does_not_use_commissioning_date_as_bus_name() -> None:
     assert suggestion.mapping.buses.fields.get("name") != "FecPuestaServicio"
 
 
+def test_in_service_rejects_existe_desde_and_prefers_estado_instalacion() -> None:
+    from gis2dgs.assist.catalog import ENTITIES
+    from gis2dgs.assist.service import _column_match_score
+
+    in_service_spec = next(
+        field
+        for entity in ENTITIES
+        if entity.name == "sources"
+        for field in entity.fields
+        if field.name == "in_service"
+    )
+    commissioning = ColumnSchema("Existe desde", "datetime64[us]", False, 96, 7)
+    status = ColumnSchema("ESTADO INSTALACIÓN", "str", False, 96, 2)
+    assert _column_match_score(in_service_spec, status) > _column_match_score(
+        in_service_spec, commissioning
+    )
+    assert _column_match_score(in_service_spec, commissioning) < 0.34
+
+
 def test_suggest_mapping_rejects_district_as_to_bus_and_prefers_bt_tramo() -> None:
     schema = DatasetSchema(
         tables=(

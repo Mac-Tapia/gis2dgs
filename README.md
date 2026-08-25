@@ -125,6 +125,11 @@ También puede inspeccionarse un SHP/GPKG/GeoJSON o una URL de base de datos.
 El archivo YAML asocia los nombres reales de tablas/columnas con el modelo
 canónico. No se modifica Python por cada empresa o sistema de origen.
 
+`suggest-mapping` prioriza columnas de estado (`ESTADO INSTALACIÓN`, etc.) para
+`in_service` y **no** propone fechas de puesta en servicio (`Existe desde`,
+`FecPuestaServicio`, …). Si una fecha queda mapeada por error, el normalizador la
+trata como instalado/en servicio.
+
 ### 3. Convertir
 
 ```powershell
@@ -155,6 +160,14 @@ Genera:
 - `input_schema.yaml`
 
 ## Calidad y auditoría
+
+Tras cambios de código, el gate unificado del harness:
+
+```powershell
+python scripts/run_verify_gate.py
+```
+
+Equivalente manual:
 
 ```powershell
 pytest

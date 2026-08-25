@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from math import isnan
 import re
 from typing import Any
@@ -112,6 +113,9 @@ def normalize_service_state(value: Any) -> bool:
         return bool(value)
     if is_missing(value):
         raise ValueError("Service state cannot be empty.")
+    # Commissioning / "exists since" columns: a concrete date means installed.
+    if isinstance(value, (datetime, date, pd.Timestamp)):
+        return True
 
     text = str(value).strip().upper()
     active_values = {
