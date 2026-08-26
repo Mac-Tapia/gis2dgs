@@ -429,6 +429,32 @@ def test_mapper_rejects_partial_xy_coordinates() -> None:
         GisToDomainMapper(config).map(dataset)
 
 
+def test_mapper_parses_geometry_text_column_for_coordinates() -> None:
+    dataset = GisDataset()
+    dataset.add_layer(
+        "nodes",
+        gpd.GeoDataFrame(
+            {
+                "id": ["B1"],
+                "v": [10.0],
+                "GEOMETRÍA": ["Nodo:  X- 421677.43  Y- 8453832.776"],
+            }
+        ),
+    )
+    config = MappingConfig.model_validate(
+        {
+            "buses": {
+                "source": "nodes",
+                "fields": {"id": "id", "nominal_voltage_kv": "v"},
+            }
+        }
+    )
+    network = GisToDomainMapper(config).map(dataset)
+    bus = network.buses[BusId("B1")]
+    assert bus.x == pytest.approx(421677.43)
+    assert bus.y == pytest.approx(8453832.776)
+
+
 def test_mapper_defaults_missing_load_active_power_to_zero(caplog) -> None:
     """Blank PAC/P cells must not abort NetworkModel construction."""
 

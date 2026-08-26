@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
+from .ids import sanitize_loc_name
 from .model import PowerFactoryModel
 
 
@@ -38,7 +39,7 @@ class PowerFactoryMappingReport:
 
 
 def ensure_unique_display_names(model: PowerFactoryModel) -> None:
-    """Replace colliding loc_name values with source IDs so PowerFactory will not rename."""
+    """Sanitize and uniquify loc_name so PowerFactory will not reject or rename."""
 
     scopes: dict[tuple[str, str | None], list[str]] = defaultdict(list)
     for key, obj in model.objects.items():
@@ -46,6 +47,13 @@ def ensure_unique_display_names(model: PowerFactoryModel) -> None:
         scopes[(obj.class_name, parent_key)].append(key)
 
     for keys in scopes.values():
+        # First pass: enforce PowerFactory loc_name character rules.
+        for key in keys:
+            obj = model.objects[key]
+            safe = sanitize_loc_name(obj.name, fallback=obj.source_id or "unnamed")
+            if safe != obj.name:
+                model.objects[key] = replace(obj, name=safe)
+
         name_counts: dict[str, int] = {}
         for key in keys:
             name = model.objects[key].name
@@ -55,13 +63,14 @@ def ensure_unique_display_names(model: PowerFactoryModel) -> None:
             obj = model.objects[key]
             name = obj.name
             if name_counts[name] > 1 or name in used:
-                fallback = (obj.source_id or "").strip()
-                if not fallback:
-                    fallback = obj.foreign_key.rsplit(":", 1)[-1]
+                fallback = sanitize_loc_name(
+                    (obj.source_id or "").strip() or obj.foreign_key.rsplit(":", 1)[-1],
+                    fallback="unnamed",
+                )
                 name = fallback
                 suffix = 2
                 while name in used:
-                    name = f"{fallback}_{suffix}"
+                    name = sanitize_loc_name(f"{fallback}_{suffix}", fallback=f"obj_{suffix}")
                     suffix += 1
                 if name != obj.name:
                     model.objects[key] = replace(obj, name=name)

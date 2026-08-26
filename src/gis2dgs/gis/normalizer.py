@@ -88,6 +88,29 @@ def normalize_number(value: Any) -> float:
     return number
 
 
+# Inventory exports often store points as text, e.g. "Nodo:  X- 421677.43  Y- 8453832.776".
+_XY_GEOMETRY_TEXT = re.compile(
+    r"X\s*[-–:]\s*([+-]?\d+(?:[.,]\d+)?)\s*[,;\s]+Y\s*[-–:]\s*([+-]?\d+(?:[.,]\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def parse_xy_from_geometry_text(value: Any) -> tuple[float, float] | None:
+    """Extract (x, y) from GIS geometry description strings; return None if not parseable."""
+
+    if is_missing(value):
+        return None
+    if isinstance(value, (int, float, bool)):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = _XY_GEOMETRY_TEXT.search(text)
+    if match is None:
+        return None
+    return normalize_number(match.group(1)), normalize_number(match.group(2))
+
+
 def normalize_switch_state(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -166,6 +189,26 @@ def normalize_service_state(value: Any) -> bool:
         return True
     if text in inactive_values:
         return False
+    # Ownership / network-role taxonomies are not service states (map ESTADO*, not PROPIETARIO/ROL).
+    ownership_or_role = {
+        "DISTRIBUIDOR",
+        "DISTRIBUIDORA",
+        "TERCEROS",
+        "TERCERO",
+        "TRANSMISOR",
+        "GENERADOR",
+        "CLIENTE",
+        "PROPIO",
+        "PROPIA",
+        "REE",
+        "ALIMENTADOR",
+    }
+    if text in ownership_or_role:
+        raise ValueError(
+            f"Unsupported service state: {value!r} "
+            "(looks like ownership/role taxonomy; map an ESTADO*/in_service column, "
+            "not PROPIETARIO/ROL)"
+        )
     raise ValueError(f"Unsupported service state: {value!r}")
 
 

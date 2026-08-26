@@ -29,6 +29,10 @@ classes:
     attributes:
       nominal_voltage_kv:
         column: uknom(r)
+      coordinate_x:
+        column: GPSlon(r)
+      coordinate_y:
+        column: GPSlat(r)
     static_values:
       OP(a:1): C
       iUsage(i): 0
@@ -281,8 +285,6 @@ classes:
       name_column: loc_name(a:80)
       parent_column: fold_id(p)
     attributes:
-      size_row:
-        column: rX:SIZEROW(i)
       r_x0:
         column: rX:0(r)
       r_x1:
@@ -293,4 +295,3 @@ classes:
         column: rY:1(r)
     static_values:
       OP(a:1): C
-      rY:SIZEROW(i): 2

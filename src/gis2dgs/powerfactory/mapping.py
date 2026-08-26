@@ -11,6 +11,7 @@ from .graphics import attach_feeder_graphics, ensure_feeder_head_sources
 from .ids import ForeignKeyFactory
 from .model import PowerFactoryModel, PowerFactoryObject, PowerFactoryReference
 from .policy import PowerFactoryMappingPolicy
+from .ids import sanitize_loc_name
 from .validation import ensure_unique_display_names, validate_powerfactory_model
 
 
@@ -642,12 +643,13 @@ class PowerFactoryMapper:
         source_kind: str | None = None,
     ) -> str:
         if source_kind == "network":
-            return name
+            return sanitize_loc_name(name, fallback="Network", max_length=80)
         # Operational codes are expected in the mapped `name` fields.
         text = name.strip() if name else ""
         if not text and source_id is not None:
             text = str(source_id).strip()
-        return text[:40] if text else "unnamed"
+        fallback = str(source_id).strip() if source_id is not None else "unnamed"
+        return sanitize_loc_name(text or fallback, fallback=fallback or "unnamed")
 
     def _object(
         self,

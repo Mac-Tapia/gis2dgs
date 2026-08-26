@@ -6,7 +6,7 @@ from .exceptions import (
     PowerFactoryMappingError,
 )
 from .graphics import attach_feeder_graphics, ensure_feeder_head_sources
-from .ids import ForeignKeyFactory
+from .ids import ForeignKeyFactory, sanitize_loc_name
 from .mapping import PowerFactoryMapper
 from .model import PowerFactoryModel, PowerFactoryObject, PowerFactoryReference
 from .policy import PowerFactoryClassMap, PowerFactoryMappingPolicy
@@ -37,5 +37,6 @@ __all__ = [
     "attach_feeder_graphics",
     "ensure_feeder_head_sources",
     "ensure_unique_display_names",
+    "sanitize_loc_name",
     "validate_powerfactory_model",
 ]

@@ -128,7 +128,12 @@ def build_parser() -> argparse.ArgumentParser:
     gui.add_argument(
         "--no-prompt",
         action="store_true",
-        help="Do not open the file dialog automatically on startup",
+        help="(Default) Do not open the file dialog on startup; kept for compatibility",
+    )
+    gui.add_argument(
+        "--prompt",
+        action="store_true",
+        help="Open the file dialog automatically on startup",
     )
 
     dgs = commands.add_parser("dgs", help="DGS template and serialization utilities")
@@ -256,9 +261,10 @@ def main() -> None:
     if args.command in {None, "gui"}:
         from gis2dgs.cli.gui import launch_gui
 
-        prompt_on_start = True
+        # Por defecto solo la ventana principal; el usuario elige archivo/carpeta.
+        prompt_on_start = False
         if args.command == "gui":
-            prompt_on_start = not args.no_prompt
+            prompt_on_start = bool(getattr(args, "prompt", False))
         launch_gui(prompt_on_start=prompt_on_start)
         return
 

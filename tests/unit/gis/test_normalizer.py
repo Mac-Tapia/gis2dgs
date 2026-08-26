@@ -96,3 +96,32 @@ def test_normalize_number_rejects_bool() -> None:
 def test_unknown_service_state_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported service state"):
         normalize_service_state("DESCONOCIDO")
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("Nodo:  X- 421677.43  Y- 8453832.776", (421677.43, 8453832.776)),
+        ("Nodo: X- 368972.035 Y- 8485177.172", (368972.035, 8485177.172)),
+        ("X- 1,5 Y- 2,5", (1.5, 2.5)),
+    ],
+)
+def test_parse_xy_from_geometry_text(value: str, expected: tuple[float, float]) -> None:
+    from gis2dgs.gis.normalizer import parse_xy_from_geometry_text
+
+    parsed = parse_xy_from_geometry_text(value)
+    assert parsed is not None
+    assert parsed[0] == pytest.approx(expected[0])
+    assert parsed[1] == pytest.approx(expected[1])
+
+
+def test_parse_xy_from_geometry_text_rejects_line_placeholder() -> None:
+    from gis2dgs.gis.normalizer import parse_xy_from_geometry_text
+
+    assert parse_xy_from_geometry_text("Linea:  2 Coordenadas") is None
+
+
+@pytest.mark.parametrize("value", ["DISTRIBUIDOR", "TERCEROS", "ALIMENTADOR"])
+def test_ownership_taxonomy_is_not_a_service_state(value: str) -> None:
+    with pytest.raises(ValueError, match="ownership/role"):
+        normalize_service_state(value)

@@ -328,6 +328,86 @@ def test_in_service_rejects_existe_desde_and_prefers_estado_instalacion() -> Non
     assert _column_match_score(in_service_spec, commissioning) < 0.34
 
 
+def test_in_service_rejects_owner_and_role_columns() -> None:
+    """Ownership/taxonomy ≠ operational state (REE GIS: ESTADO ≠ PROPIETARIO)."""
+
+    from gis2dgs.assist.catalog import ENTITIES
+    from gis2dgs.assist.service import COLUMN_SCORE_MIN, _column_match_score
+
+    in_service_spec = next(
+        field
+        for entity in ENTITIES
+        if entity.name == "sources"
+        for field in entity.fields
+        if field.name == "in_service"
+    )
+    status = ColumnSchema("ESTADO INSTALACIÓN", "str", False, 96, 2)
+    owner = ColumnSchema("PROPRIETARIO", "str", False, 96, 2)
+    role = ColumnSchema("ROL", "str", False, 96, 3)
+    executor = ColumnSchema("EJECUTOR", "str", True, 2, 2)
+
+    assert _column_match_score(in_service_spec, status) >= COLUMN_SCORE_MIN
+    assert _column_match_score(in_service_spec, owner) < COLUMN_SCORE_MIN
+    assert _column_match_score(in_service_spec, role) < COLUMN_SCORE_MIN
+    assert _column_match_score(in_service_spec, executor) < COLUMN_SCORE_MIN
+
+
+def test_suggest_mapping_omt_without_status_omits_in_service() -> None:
+    schema = DatasetSchema(
+        tables=(
+            TableSchema(
+                "BD_AMT",
+                96,
+                (
+                    _column("ID", "int16", 96),
+                    _column("PROPRIETARIO", unique=2),
+                    _column("SET", unique=24),
+                    _column("TENSIÓN NOMINAL", "int32", 10),
+                    _column("LOCALIDAD", unique=1),
+                    _column("ROL", unique=3),
+                    ColumnSchema("Existe desde", "datetime64[us]", False, 96, 7),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_SED",
+                10,
+                (
+                    _column("CÓDIGO", unique=10),
+                    _column("TENSIÓN NOMINAL MT (KV)", unique=2),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "BD_Tramo AT",
+                20,
+                (
+                    _column("ID", "int32", 20),
+                    _column("CÓDIGO TRAMO PADRE", "float32", 15),
+                    _column("LONGITUD REAL (M)", "float64", 20),
+                    _column("NIVEL DE TENSIÓN (KV)", unique=2),
+                    _column("ESTADO INSTALACIÓN", unique=2),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+        )
+    )
+    suggestion = suggest_mapping(schema, seed=7, population_size=16, generations=8)
+    assert suggestion.mapping.sources is not None
+    assert suggestion.mapping.sources.source == "BD_AMT"
+    assert "in_service" not in suggestion.mapping.sources.fields
+    assert suggestion.mapping.sources.fields.get("bus_id") == "SET"
+
+
 def test_suggest_mapping_rejects_district_as_to_bus_and_prefers_bt_tramo() -> None:
     schema = DatasetSchema(
         tables=(
@@ -599,3 +679,24 @@ def test_voltage_column_type_ok_for_string_kv() -> None:
     )
     assert _voltage_column_type_ok(ColumnSchema("voltage_kv", "float64", False, 10, 2))
     assert not _voltage_column_type_ok(ColumnSchema("nombre", "str", False, 10, 8))
+
+
+def test_sanitize_display_name_rejects_color_column() -> None:
+    from gis2dgs.assist.service import _sanitize_display_name_field
+
+    table = TableSchema(
+        name="BD_AMT",
+        rows=3,
+        columns=(
+            ColumnSchema("ID", "int32", False, 3, 3),
+            ColumnSchema("COLOR", "str", False, 3, 3),
+            ColumnSchema("SET", "str", False, 3, 2),
+        ),
+        is_spatial=False,
+        geometry_column=None,
+        crs=None,
+        source_id=None,
+    )
+    fields = {"id": "ID", "name": "COLOR", "bus_id": "SET"}
+    _sanitize_display_name_field(table, fields)
+    assert "name" not in fields

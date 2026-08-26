@@ -137,6 +137,40 @@ _COORDINATE_MARKERS = frozenset(
         "latitud",
     }
 )
+# Ownership / taxonomy columns are not operational service state (REE GIS: ESTADO ≠ PROPIETARIO;
+# LatAm inventories use DISTRIBUIDOR/TERCEROS as owner codes, not EN SERVICIO / FUERA DE SERVICIO).
+_IN_SERVICE_NEGATIVE_MARKERS = (
+    "propietar",
+    "proprietar",
+    "owner",
+    "titular",
+    "mantenedor",
+    "ejecutor",
+    "rol",
+    "role",
+    "color",
+    "localidad",
+    "distrito",
+    "sistema",
+    "descripcion",
+    "description",
+    "nombre",
+    "name",
+    "codigo",
+    "code",
+)
+_IN_SERVICE_POSITIVE_MARKERS = (
+    "estado",
+    "service",
+    "servic",
+    "outserv",
+    "activo",
+    "inactiv",
+    "operativ",
+    "status",
+    "instalacion",
+    "suministro",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,6 +540,11 @@ def _column_match_score(spec: FieldSpec, column: ColumnSchema) -> float:
             )
         ):
             score *= 0.05
+        if any(marker in token for marker in _IN_SERVICE_NEGATIVE_MARKERS):
+            score *= 0.05
+        elif not any(marker in token for marker in _IN_SERVICE_POSITIVE_MARKERS):
+            # Reject fuzzy-only matches (e.g. SequenceMatcher on PROPRIETARIO ≈ estado*).
+            score *= 0.25
     if spec.name == "name":
         if (
             "datetime" in dtype
@@ -1176,7 +1215,17 @@ def _sanitize_display_name_field(table: TableSchema, fields: dict[str, str]) -> 
         or dtype in {"date"}
         or any(
             marker in token
-            for marker in ("fec", "fecha", "date", "datetime", "timestamp", "padre")
+            for marker in (
+                "fec",
+                "fecha",
+                "date",
+                "datetime",
+                "timestamp",
+                "padre",
+                "color",
+                "rgb",
+                "colour",
+            )
         )
         or "norma" in token
     ):

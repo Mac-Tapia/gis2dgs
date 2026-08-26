@@ -43,6 +43,7 @@ from gis2dgs.gis.normalizer import (
     normalize_number,
     normalize_optional_identifier,
     normalize_service_state,
+    parse_xy_from_geometry_text,
     normalize_switch_state,
 )
 from gis2dgs.gis.voltage_lookup import VoltageLookup
@@ -488,12 +489,40 @@ class GisToDomainMapper:
 
         if not is_missing(x_value) or not is_missing(y_value):
             if is_missing(x_value) or is_missing(y_value):
+                # Same GEOMETRÍA text mapped (or only one side filled): try parse.
+                for candidate in (x_value, y_value):
+                    parsed = parse_xy_from_geometry_text(candidate)
+                    if parsed is not None:
+                        return parsed
                 raise ValueError("Both x and y coordinates must be provided together.")
-            return normalize_number(x_value), normalize_number(y_value)
+            parsed_pair = parse_xy_from_geometry_text(x_value)
+            if parsed_pair is not None and (
+                is_missing(y_value)
+                or parse_xy_from_geometry_text(y_value) is not None
+                or str(x_value).strip() == str(y_value).strip()
+            ):
+                return parsed_pair
+            try:
+                return normalize_number(x_value), normalize_number(y_value)
+            except ValueError:
+                parsed = parse_xy_from_geometry_text(x_value) or parse_xy_from_geometry_text(
+                    y_value
+                )
+                if parsed is not None:
+                    return parsed
+                raise
 
         geometry = row.row.get("geometry")
         if isinstance(geometry, Point) and not geometry.is_empty:
             return float(geometry.x), float(geometry.y)
+
+        # Inventory text columns (e.g. GEOMETRÍA) when x/y were not mapped.
+        for key, value in row.row.items():
+            token = str(key).casefold()
+            if "geometr" in token or token in {"coord", "coordenada", "coordenadas"}:
+                parsed = parse_xy_from_geometry_text(value)
+                if parsed is not None:
+                    return parsed
         return None, None
 
 

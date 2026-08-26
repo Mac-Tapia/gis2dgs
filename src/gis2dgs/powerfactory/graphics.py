@@ -9,7 +9,7 @@ from gis2dgs.domain.identifiers import BusId, SourceId
 from gis2dgs.domain.source import Source
 
 from .classes import PowerFactoryClass
-from .ids import ForeignKeyFactory
+from .ids import ForeignKeyFactory, sanitize_loc_name
 from .model import PowerFactoryModel, PowerFactoryObject, PowerFactoryReference
 from .policy import PowerFactoryMappingPolicy
 
@@ -60,7 +60,11 @@ def attach_feeder_graphics(
     network_keys: dict[str, str] | None = None,
     default_network_key: str | None = None,
 ) -> int:
-    """Create one IntGrfnet diagram per feeder with symbols labeled by operational code."""
+    """Create IntGrfnet diagram(s) with symbols placed by GIS coordinates when available.
+
+    With ``split_networks_by_system=False`` (single grid), emits one diagram for the
+    whole network so geographic placement stays coherent.
+    """
 
     if not policy.create_feeder_graphics and not policy.create_feeder_objects:
         return 0
@@ -69,14 +73,19 @@ def attach_feeder_graphics(
     if not membership:
         return 0
 
-    by_feeder: dict[str, set[str]] = defaultdict(set)
-    for bus_id, feeder_id in membership.items():
-        by_feeder[feeder_id].add(bus_id)
-
     default_key = default_network_key or network_key
     if default_key is None:
         raise ValueError("default_network_key or network_key is required")
 
+    # Single-grid mode: one SLD for the whole network (coordinates preserved).
+    if not policy.split_networks_by_system:
+        by_feeder = {policy.network_id: set(membership.keys())}
+    else:
+        by_feeder = defaultdict(set)
+        for bus_id, feeder_id in membership.items():
+            by_feeder[feeder_id].add(bus_id)
+
+    skip_loads = len(network.loads) > 5_000
     pages = 0
     for feeder_id, bus_ids in sorted(by_feeder.items()):
         parent_key = _diagram_parent_key(
@@ -97,7 +106,7 @@ def attach_feeder_graphics(
                     source_id=feeder_id,
                 )
             )
-        if policy.create_feeder_objects:
+        if policy.create_feeder_objects and policy.split_networks_by_system:
             _add_feeder_object(
                 model,
                 network=network,
@@ -111,6 +120,7 @@ def attach_feeder_graphics(
             continue
 
         positions = _layout_feeder(network, feeder_id, bus_ids)
+        positions = _normalize_diagram_origin(positions)
         for bus_id in sorted(bus_ids):
             term_key = keys.make("bus", bus_id)
             if term_key not in model.objects:
@@ -151,33 +161,38 @@ def attach_feeder_graphics(
                 )
             )
 
-        for load in network.loads.values():
-            if str(load.bus_id) not in bus_ids:
-                continue
-            load_key = keys.make("load", load.id)
-            if load_key not in model.objects:
-                continue
-            code = _operational_code(model.objects[load_key], str(load.id))
-            bus_pos = positions.get(str(load.bus_id), (0.0, 0.0))
-            model.add(
-                _graphic(
-                    foreign_key=keys.make("grf", f"load:{load.id}"),
-                    name=code,
-                    diagram_key=diagram_key,
-                    data_key=load_key,
-                    symbol=_SYM_LOAD,
-                    x=bus_pos[0] + _SPACING_X * 0.35,
-                    y=bus_pos[1] + _SPACING_Y * 0.35,
-                    source_id=code,
+        if not skip_loads:
+            for load in network.loads.values():
+                if str(load.bus_id) not in bus_ids:
+                    continue
+                load_key = keys.make("load", load.id)
+                if load_key not in model.objects:
+                    continue
+                code = _operational_code(model.objects[load_key], str(load.id))
+                bus_pos = positions.get(str(load.bus_id), (0.0, 0.0))
+                model.add(
+                    _graphic(
+                        foreign_key=keys.make("grf", f"load:{load.id}"),
+                        name=code,
+                        diagram_key=diagram_key,
+                        data_key=load_key,
+                        symbol=_SYM_LOAD,
+                        x=bus_pos[0] + _SPACING_X * 0.35,
+                        y=bus_pos[1] + _SPACING_Y * 0.35,
+                        source_id=code,
+                    )
                 )
-            )
 
         for line in network.lines.values():
             from_id = str(line.from_bus)
             to_id = str(line.to_bus)
             if from_id not in bus_ids and to_id not in bus_ids:
                 continue
-            if membership.get(from_id) != feeder_id and membership.get(to_id) != feeder_id:
+            if (
+                policy.split_networks_by_system
+                and membership.get(from_id) != feeder_id
+                and membership.get(to_id) != feeder_id
+            ):
                 continue
             line_key = keys.make("line", line.id)
             if line_key not in model.objects:
@@ -191,7 +206,7 @@ def attach_feeder_graphics(
             model.add(
                 _graphic(
                     foreign_key=grf_key,
-                    name=code,
+                    name=f"L_{code}"[:40],
                     diagram_key=diagram_key,
                     data_key=line_key,
                     symbol=_SYM_LINE,
@@ -205,13 +220,12 @@ def attach_feeder_graphics(
                     PowerFactoryObject(
                         class_name=str(PowerFactoryClass.GRAPHIC_CON),
                         foreign_key=keys.make("grfcon", f"line:{line.id}:{index}"),
-                        name=f"{code}_{index + 1}",
+                        name=f"C_{code}_{index + 1}"[:40],
                         attributes={
                             "r_x0": px,
                             "r_y0": py,
                             "r_x1": mid_x,
                             "r_y1": mid_y,
-                            "size_row": 2,
                         },
                         parent=PowerFactoryReference(grf_key),
                         source_kind="graphic_connection",
@@ -222,10 +236,13 @@ def attach_feeder_graphics(
         for transformer in network.transformers.values():
             hv = str(transformer.hv_bus)
             lv = str(transformer.lv_bus)
-            if membership.get(hv) != feeder_id and membership.get(lv) != feeder_id:
-                continue
-            # Place each transformer once, on the HV-side feeder diagram.
-            if membership.get(hv, feeder_id) != feeder_id:
+            if policy.split_networks_by_system:
+                if membership.get(hv) != feeder_id and membership.get(lv) != feeder_id:
+                    continue
+                # Place each transformer once, on the HV-side feeder diagram.
+                if membership.get(hv, feeder_id) != feeder_id:
+                    continue
+            elif hv not in bus_ids and lv not in bus_ids:
                 continue
             tr_key = keys.make("trafo", transformer.id)
             if tr_key not in model.objects:
@@ -252,6 +269,21 @@ def attach_feeder_graphics(
     return pages
 
 
+def _normalize_diagram_origin(
+    positions: dict[str, tuple[float, float]],
+) -> dict[str, tuple[float, float]]:
+    """Shift GIS/UTM coords so the diagram origin is near (0,0) while keeping relative layout."""
+
+    if not positions:
+        return positions
+    xs = [xy[0] for xy in positions.values()]
+    ys = [xy[1] for xy in positions.values()]
+    min_x, min_y = min(xs), min(ys)
+    if abs(min_x) < 1.0 and abs(min_y) < 1.0:
+        return positions
+    return {key: (x - min_x, y - min_y) for key, (x, y) in positions.items()}
+
+
 def _add_feeder_object(
     model: PowerFactoryModel,
     *,
@@ -273,17 +305,13 @@ def _add_feeder_object(
             head_source_key = source_key
             break
     if head_source_key is None:
-        # Fall back to a terminal on the feeder when no source exists.
-        for bus_id in sorted(bus_ids):
-            term_key = keys.make("bus", bus_id)
-            if term_key in model.objects:
-                head_source_key = term_key
-                break
-    if head_source_key is None:
         return
 
     cubicle_key = keys.cubicle(head_source_key, "1")
-    obj_key = cubicle_key if cubicle_key in model.objects else head_source_key
+    if cubicle_key not in model.objects:
+        # ElmFeeder.obj_id must reference StaCubic*, never ElmTerm.
+        return
+    obj_key = cubicle_key
     feeder_key = keys.make("feeder", feeder_id)
     if feeder_key in model.objects:
         return
@@ -407,6 +435,39 @@ def _layout_feeder(
         positions[bus_id] = (float(bus.x), float(bus.y))
         has_coords = True
     if has_coords and len(positions) >= max(1, len(bus_ids) // 2):
+        # Fill buses without GIS coords near a connected neighbour that has one.
+        adjacency: dict[str, set[str]] = defaultdict(set)
+        for line in network.lines.values():
+            a = str(line.from_bus)
+            b = str(line.to_bus)
+            if a in bus_ids and b in bus_ids:
+                adjacency[a].add(b)
+                adjacency[b].add(a)
+        missing = [bus_id for bus_id in bus_ids if bus_id not in positions]
+        changed = True
+        while missing and changed:
+            changed = False
+            still: list[str] = []
+            for bus_id in missing:
+                neighbour_xy = [
+                    positions[n]
+                    for n in adjacency.get(bus_id, ())
+                    if n in positions
+                ]
+                if neighbour_xy:
+                    xs = [xy[0] for xy in neighbour_xy]
+                    ys = [xy[1] for xy in neighbour_xy]
+                    positions[bus_id] = (sum(xs) / len(xs), sum(ys) / len(ys))
+                    changed = True
+                else:
+                    still.append(bus_id)
+            missing = still
+        if missing:
+            # Isolated nodes without coords: place east of the GIS extent.
+            max_x = max((xy[0] for xy in positions.values()), default=0.0)
+            max_y = max((xy[1] for xy in positions.values()), default=0.0)
+            for index, bus_id in enumerate(sorted(missing)):
+                positions[bus_id] = (max_x + _SPACING_X * (index + 1), max_y)
         return positions
 
     adjacency: dict[str, set[str]] = defaultdict(set)
@@ -456,8 +517,7 @@ def _operational_code(obj: PowerFactoryObject, fallback: str) -> str:
 
 
 def _safe_name(value: str) -> str:
-    cleaned = value.strip() or "UNNAMED"
-    return cleaned[:40]
+    return sanitize_loc_name(value, fallback="UNNAMED")
 
 
 def _graphic(

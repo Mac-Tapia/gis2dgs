@@ -39,7 +39,11 @@ arranca `mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04` (`docker-compose
 con la contraseña SA en `GIS2DGS_MSSQL_SA_PASSWORD` (nunca se versiona; puede generarse en
 `output\mssql\.sa_password`). Hace `docker pull` con reintentos y reutiliza la imagen local
 si ya está descargada. Deja las variables en la sesión y en
-`output\mssql\session.env.ps1`.
+`output\mssql\session.env.ps1`. Al cerrar `.\RUN.ps1` el contenedor **se mantiene**
+activo (use `.\RUN.ps1 -Cleanup` o `.\scripts\cleanup_mssql.ps1` solo si quiere apagarlo).
+
+Los scripts `.sql` sueltos **no** son entrada del conversor; use un `.bak` (o backup
+`TAPE`) o una base ya restaurada vía `GIS2DGS_MSSQL_URL`.
 
 Si MCR no responde (TLS timeout), ejecute
 `docker pull mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04` o defina
@@ -189,19 +193,19 @@ Si no existe `.venv`:
 
 y después otra vez `.\RUN.ps1`.
 
-Se abre la ventana **GIS2DGS** y, enseguida, el diálogo **Seleccione el archivo a cargar**.
+Se abre la ventana **GIS2DGS** (pantalla principal). El diálogo de archivos **no** se abre solo: use **Cargar archivo…**, **Cargar varios…** o **Cargar carpeta…** cuando quiera.
 
 ---
 
 ## 2. Cargar el archivo en la interfaz (conversión a DGS)
 
-En la ventana hay tres botones:
+En la ventana hay botones:
 
-`Cargar archivo…`    `Ejecutar`    `Abrir salida`
+`Cargar archivo…`    `Cargar varios…`    `Cargar carpeta…`    `Ejecutar`    `Abrir salida`
 
 ### Conversión que ya funciona (hágalo primero)
 
-1. Pulse **Cargar archivo…** (si el diálogo no salió solo).
+1. Pulse **Cargar archivo…** (o **Cargar carpeta…** si prefiere una carpeta).
 2. Vaya a la carpeta del proyecto.
 3. Abra `examples` → `minimal`.
 4. Seleccione **`project.yaml`** (no el CSV, no el Excel).

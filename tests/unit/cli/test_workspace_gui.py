@@ -29,6 +29,14 @@ def test_cli_parser_has_gui_command() -> None:
     args = parser.parse_args(["gui", "--no-prompt"])
     assert args.command == "gui"
     assert args.no_prompt is True
+    assert args.prompt is False
+
+
+def test_cli_parser_gui_prompt_opt_in() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["gui", "--prompt"])
+    assert args.command == "gui"
+    assert args.prompt is True
 
 
 def test_cli_parser_has_suggest_mapping() -> None:

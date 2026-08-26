@@ -5,6 +5,28 @@ import re
 from dataclasses import dataclass
 
 _SAFE = re.compile(r"[^A-Za-z0-9_.:-]+")
+# PowerFactory loc_name: non-empty and no : * ? = " , \ ~ | LF CR !
+_INVALID_LOC_NAME = re.compile(r'[:*?=",\\~|\n\r!]+')
+_MULTI_UNDERSCORE = re.compile(r"_+")
+
+
+def sanitize_loc_name(
+    value: object,
+    *,
+    fallback: str = "unnamed",
+    max_length: int = 40,
+) -> str:
+    """Return a PowerFactory-safe ``loc_name`` (non-empty, no forbidden chars)."""
+
+    def _clean(raw: str) -> str:
+        cleaned = _INVALID_LOC_NAME.sub("_", raw.strip())
+        cleaned = _MULTI_UNDERSCORE.sub("_", cleaned).strip("._")
+        return cleaned
+
+    text = _clean(str(value if value is not None else ""))
+    if not text:
+        text = _clean(fallback) or "unnamed"
+    return text[:max_length]
 
 
 @dataclass(frozen=True, slots=True)

@@ -64,7 +64,7 @@ _STRATEGY_LABELS = {
 class ConverterApp(tk.Tk):
     """Desktop window: load a source, decide mapping, run the integral flow."""
 
-    def __init__(self, *, prompt_on_start: bool = True) -> None:
+    def __init__(self, *, prompt_on_start: bool = False) -> None:
         super().__init__()
         self.title(f"GIS2DGS {__version__}")
         self.minsize(900, 640)
@@ -75,6 +75,8 @@ class ConverterApp(tk.Tk):
         self._confirmed_mapping: dict | None = None
         self._weight_vars: dict[str, tk.DoubleVar] = {}
         self._build()
+        # Solo abre el diálogo si se pide explícitamente (p. ej. --prompt).
+        # Por defecto queda la ventana principal y el usuario elige archivo/carpeta.
         if prompt_on_start:
             self.after(200, self._choose_file)
 
@@ -565,6 +567,6 @@ def _format_payload(payload: dict[str, object]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
 
-def launch_gui(*, prompt_on_start: bool = True) -> None:
+def launch_gui(*, prompt_on_start: bool = False) -> None:
     app = ConverterApp(prompt_on_start=prompt_on_start)
     app.mainloop()

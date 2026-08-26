@@ -275,7 +275,12 @@ def _template_config_dir() -> Path:
     return _repo_root() / "examples" / "minimal" / "config"
 
 
-def _copy_runtime_templates(config_dir: Path, *, for_discovery: bool = False) -> None:
+def _copy_runtime_templates(
+    config_dir: Path,
+    *,
+    for_discovery: bool = False,
+    run_name: str | None = None,
+) -> None:
     source = _template_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     for name in (
@@ -299,6 +304,13 @@ def _copy_runtime_templates(config_dir: Path, *, for_discovery: bool = False) ->
         pf_payload = yaml.safe_load(pf_path.read_text(encoding="utf-8")) or {}
         if isinstance(pf_payload, dict):
             pf_payload["require_type_references"] = False
+            # Single-grid import: one ElmNet + one geo SLD (GIS coordinates preserved).
+            pf_payload["split_networks_by_system"] = False
+            pf_payload["create_feeder_graphics"] = True
+            pf_payload["create_feeder_objects"] = False
+            pf_payload["include_coordinates"] = True
+            if run_name:
+                pf_payload["network_name"] = f"{run_name} Network"
             pf_path.write_text(
                 yaml.safe_dump(pf_payload, sort_keys=False, allow_unicode=True),
                 encoding="utf-8",
@@ -460,7 +472,7 @@ def _write_loaded_project(
     name: str,
 ) -> Path:
     config_dir = run_dir / "config"
-    _copy_runtime_templates(config_dir, for_discovery=True)
+    _copy_runtime_templates(config_dir, for_discovery=True, run_name=name)
     mapping_path = config_dir / "mapping.yaml"
     mapping_path.write_text(
         yaml.safe_dump(mapping, sort_keys=False, allow_unicode=True),

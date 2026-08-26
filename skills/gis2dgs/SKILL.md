@@ -112,8 +112,8 @@ Flujo de decisión → convert:
 3. `load` / **Ejecutar** aplica estrategia multimodal (`auto|full_mapped|network_core|compact_lines`)
    y escribe `output/loaded/<run>/output/decision_report.yaml` antes del DGS.
 
-Sin argumentos se abre la interfaz para **cargar un archivo y ejecutar**. El detalle de
-comandos de consola está en `docs/MANUAL_EJECUCION_CONSOLA.md`. La secuencia de
+Sin argumentos se abre la interfaz principal; el usuario carga archivo/carpeta y ejecuta.
+El detalle de comandos de consola está en `docs/MANUAL_EJECUCION_CONSOLA.md`. La secuencia de
 **archivo real → verificar (`inspect-input`) → ejecutar (`convert`)** está en
 `docs/GUIA_PASO_A_PASO.md`.
 

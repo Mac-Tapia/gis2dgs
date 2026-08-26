@@ -1,6 +1,6 @@
 import pytest
 
-from gis2dgs.powerfactory import ForeignKeyFactory
+from gis2dgs.powerfactory import ForeignKeyFactory, sanitize_loc_name
 
 
 def test_foreign_key_is_deterministic() -> None:
@@ -37,3 +37,10 @@ def test_long_foreign_keys_remain_deterministic_and_distinct() -> None:
     b = factory.make("line", "A" * 80 + "2")
     assert a == factory.make("line", "A" * 80 + "1")
     assert a != b
+
+
+def test_sanitize_loc_name_strips_powerfactory_forbidden_characters() -> None:
+    assert ":" not in sanitize_loc_name("1952-09-01 00:00:00")
+    assert "," not in sanitize_loc_name("[255, 0, 0]")
+    assert sanitize_loc_name("") == "unnamed"
+    assert len(sanitize_loc_name("x" * 100)) == 40
