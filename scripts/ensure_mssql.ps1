@@ -342,12 +342,74 @@ $env:GIS2DGS_MSSQL_HOST_STAGE_DIR = $backupHost
 $env:GIS2DGS_MSSQL_SERVER_BACKUP_DIR = "/var/opt/mssql/backup"
 $env:GIS2DGS_MSSQL_DATA_DIRECTORY = "/var/opt/mssql/data"
 
-Write-Info "Arrancando contenedor mcr.microsoft.com/mssql/server:2022-latest ..."
+$mssqlImage = "mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04"
+$composeFile = "docker-compose.mssql.yml"
+
+function Test-DockerImagePresent([string]$Image) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        # Discard inspect JSON so it never becomes the function return value.
+        $null = & docker image inspect $Image 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
+function Ensure-MssqlImage {
+    param(
+        [string]$Image,
+        [int]$Attempts = 3
+    )
+    if (Test-DockerImagePresent $Image) {
+        Write-Info "Imagen local presente: $Image"
+        return $true
+    }
+    Write-Info "Descargando imagen $Image (puede tardar; reintentos=$Attempts)..."
+    for ($i = 1; $i -le $Attempts; $i++) {
+        Write-Info "docker pull intento $i/$Attempts ..."
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            # Out-Host keeps docker progress visible without polluting return values.
+            & docker pull $Image 2>&1 | ForEach-Object { Write-Host $_ }
+            $code = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prev
+        }
+        if (($code -eq 0) -and (Test-DockerImagePresent $Image)) {
+            Write-Ok "Imagen lista: $Image"
+            return $true
+        }
+        # Image may already be local after a partial/failed progress stream.
+        if (Test-DockerImagePresent $Image) {
+            Write-Ok "Imagen local usable tras intento ${i}: $Image"
+            return $true
+        }
+        Write-Warn "Pull fallido (intento $i). Si ve TLS timeout o commit/rename, reintente o reinicie Docker Desktop."
+        Start-Sleep -Seconds ([Math]::Min(15 * $i, 45))
+    }
+    return $false
+}
+
+if (-not (Ensure-MssqlImage -Image $mssqlImage)) {
+    Write-Warn "No se pudo descargar $mssqlImage desde mcr.microsoft.com."
+    Write-Host "Opciones:"
+    Write-Host "  1) Reintente en otra red/VPN: docker pull $mssqlImage"
+    Write-Host "  2) Use SQL Server local y defina GIS2DGS_MSSQL_URL hacia master"
+    Write-Host "Documentacion: docs\SYSTEM_REQUIREMENTS.md"
+    exit 5
+}
+
+Write-Info "Arrancando contenedor $mssqlImage ..."
 Remove-Gis2dgsContainer
 Install-ModernOdbc | Out-Null
-& docker compose -f docker-compose.mssql.yml up -d
+$pullPolicy = if (Test-DockerImagePresent $mssqlImage) { "never" } else { "missing" }
+& docker compose -f $composeFile up -d --pull $pullPolicy
 if ($LASTEXITCODE -ne 0) {
-    throw "docker compose up fallo. Revise Docker Desktop y GIS2DGS_MSSQL_SA_PASSWORD."
+    Write-Warn "docker compose up fallo. Revise Docker Desktop, puerto $($env:GIS2DGS_MSSQL_PORT) y GIS2DGS_MSSQL_SA_PASSWORD."
+    exit 5
 }
 
 $env:GIS2DGS_MSSQL_DOCKER = "true"

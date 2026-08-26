@@ -567,12 +567,14 @@ def test_docker_compose_does_not_commit_secrets() -> None:
     root = Path(__file__).resolve().parents[3]
     compose = (root / "docker-compose.mssql.yml").read_text(encoding="utf-8")
     assert "${GIS2DGS_MSSQL_SA_PASSWORD}" in compose
-    assert "mcr.microsoft.com/mssql/server" in compose
+    assert "mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04" in compose
     assert "./output/mssql/backup:/var/opt/mssql/backup" in compose
     assert "MSSQL_SA_PASSWORD: ${GIS2DGS_MSSQL_SA_PASSWORD}" in compose
     script = (root / "scripts" / "ensure_mssql.ps1").read_text(encoding="utf-8")
     assert "docker compose" in script
     assert "GIS2DGS_MSSQL_SA_PASSWORD" in script
+    assert "Ensure-MssqlImage" in script
+    assert "--pull" in script
 
 
 def _executed_sqls(conn: MagicMock) -> list[str]:

@@ -35,10 +35,15 @@ no se desempaqueta como carpeta de tablas sin el motor.
 
 El script, en este orden: usa `GIS2DGS_MSSQL_URL` si ya conecta; prueba `localhost` /
 Express / LocalDB con autenticación Windows; si no hay motor y Docker está en marcha,
-arranca `mcr.microsoft.com/mssql/server` (`docker-compose.mssql.yml`) con la contraseña
-SA en `GIS2DGS_MSSQL_SA_PASSWORD` (nunca se versiona; puede generarse en
-`output\mssql\.sa_password`). Deja las variables en la sesión y en
+arranca `mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04` (`docker-compose.mssql.yml`)
+con la contraseña SA en `GIS2DGS_MSSQL_SA_PASSWORD` (nunca se versiona; puede generarse en
+`output\mssql\.sa_password`). Hace `docker pull` con reintentos y reutiliza la imagen local
+si ya está descargada. Deja las variables en la sesión y en
 `output\mssql\session.env.ps1`.
+
+Si MCR no responde (TLS timeout), ejecute
+`docker pull mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04` o defina
+`GIS2DGS_MSSQL_URL` hacia un SQL Server local.
 
 Instancia ya existente, sin Docker:
 

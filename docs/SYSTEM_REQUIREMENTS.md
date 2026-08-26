@@ -12,8 +12,10 @@
 - SQL Server: paquete Python `pyodbc` (incluido en `requirements.txt`) y un Microsoft ODBC Driver
   17 u 18 instalado en Windows. El restore de `.bak` está implementado (`MssqlBackupReader`).
   El motor se comprueba o arranca con `.\scripts\ensure_mssql.ps1` (localhost / LocalDB /
-  Express, o Docker `docker-compose.mssql.yml`). También puede fijar `GIS2DGS_MSSQL_URL`
+  Express, o Docker `docker-compose.mssql.yml` con imagen pinneada
+  `mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04`). También puede fijar `GIS2DGS_MSSQL_URL`
   hacia `master`. La contraseña SA de Docker va en `GIS2DGS_MSSQL_SA_PASSWORD`, nunca en git.
+  Si el pull de MCR falla (TLS timeout), reintente `docker pull` o use un SQL Server local.
   Con ODBC 18 el contenedor Docker se conecta con `UID=sa`, `Authentication=SqlPassword`,
   `Encrypt=yes` y `TrustServerCertificate=yes` (no usar `Trusted_Connection` contra Linux).
 - PostgreSQL/PostGIS: `psycopg[binary]` incluido en `requirements.txt`; el servidor/PostGIS es externo.

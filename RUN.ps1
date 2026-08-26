@@ -24,10 +24,19 @@ if (-not (Test-Path $py)) {
 }
 
 Write-Host "Verificando SQL Server (necesario para archivos .bak)..." -ForegroundColor DarkGray
+$ensureExit = 0
 try {
     & "$PSScriptRoot\scripts\ensure_mssql.ps1"
+    $ensureExit = $LASTEXITCODE
 } catch {
+    $ensureExit = 1
+}
+if ($ensureExit -ne 0) {
     Write-Host "SQL Server no disponible (se requiere solo para .bak). Otros formatos funcionan sin él." -ForegroundColor DarkGray
+    if ($ensureExit -eq 5) {
+        Write-Host "Hint .bak: docker pull mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04" -ForegroundColor DarkYellow
+        Write-Host "  o defina GIS2DGS_MSSQL_URL hacia un SQL Server local (docs\SYSTEM_REQUIREMENTS.md)." -ForegroundColor DarkYellow
+    }
 }
 
 # Cargar variables de sesión que ensure_mssql.ps1 pudo haber creado/actualizado

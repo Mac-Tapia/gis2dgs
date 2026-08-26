@@ -1,9 +1,10 @@
 # SQL Server for GIS2DGS backup restore (Docker).
 # Password is never committed: set GIS2DGS_MSSQL_SA_PASSWORD in the shell.
 # Start: .\scripts\ensure_mssql.ps1
+# Pin a CU tag (not :2022-latest) so pulls are stable across flaky MCR redirects.
 services:
   gis2dgs-mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
     container_name: gis2dgs-mssql
     platform: linux/amd64
     environment:
