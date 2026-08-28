@@ -70,6 +70,7 @@ class GisToDomainMapper:
         self.voltage_lookup = voltage_lookup
         self._defaulted_load_powers: Counter[str] = Counter()
         self._skipped_loads: Counter[str] = Counter()
+        self._skipped_lines: Counter[str] = Counter()
 
     def _voltage_codes(self) -> dict[str, float] | None:
         if self.voltage_lookup is None:
@@ -220,10 +221,7 @@ class GisToDomainMapper:
         return Bus(
             id=BusId(object_id),
             name=normalize_name(row.get("name"), fallback=object_id),
-            nominal_voltage_kv=self._convert_voltage(
-                row.require("nominal_voltage_kv"),
-                row.unit("nominal_voltage_kv", "kV"),
-            ),
+            nominal_voltage_kv=self._resolve_bus_voltage(row),
             x=x,
             y=y,
             feeder_id=FeederId(feeder) if feeder is not None else None,
@@ -245,13 +243,23 @@ class GisToDomainMapper:
             y=y,
         )
 
-    def _build_line(self, row: RowAccessor) -> Line:
+    def _build_line(self, row: RowAccessor) -> Line | None:
         object_id = normalize_identifier(row.require("id"))
+        from_raw = row.get("from_bus")
+        to_raw = row.get("to_bus")
+        if is_missing(from_raw) or is_missing(to_raw):
+            self._skipped_lines["missing_endpoints"] += 1
+            return None
+        from_bus_id = normalize_identifier(from_raw)
+        to_bus_id = normalize_identifier(to_raw)
+        if from_bus_id == to_bus_id:
+            self._skipped_lines["self_loop"] += 1
+            return None
         return Line(
             id=LineId(object_id),
             name=normalize_name(row.get("name"), fallback=object_id),
-            from_bus=BusId(normalize_identifier(row.require("from_bus"))),
-            to_bus=BusId(normalize_identifier(row.require("to_bus"))),
+            from_bus=BusId(from_bus_id),
+            to_bus=BusId(to_bus_id),
             length_km=self._line_length_km(row),
             nominal_voltage_kv=self._convert_voltage(
                 row.require("nominal_voltage_kv"),
@@ -422,6 +430,18 @@ class GisToDomainMapper:
                 "Skipped %d load row(s) with invalid bus_id.",
                 skipped_invalid_bus,
             )
+        skipped_lines = self._skipped_lines.get("missing_endpoints", 0)
+        if skipped_lines:
+            logger.warning(
+                "Skipped %d line row(s) with unresolved from_bus/to_bus connectivity.",
+                skipped_lines,
+            )
+        skipped_self_loops = self._skipped_lines.get("self_loop", 0)
+        if skipped_self_loops:
+            logger.warning(
+                "Skipped %d line row(s) where both endpoints resolved to the same bus.",
+                skipped_self_loops,
+            )
 
     def _build_generator(self, row: RowAccessor) -> Generator:
         object_id = normalize_identifier(row.require("id"))
@@ -469,6 +489,26 @@ class GisToDomainMapper:
             unit,
             code_lookup=self._voltage_codes(),
         )
+
+    def _resolve_bus_voltage(self, row: RowAccessor) -> float:
+        voltage = self._convert_voltage(
+            row.require("nominal_voltage_kv"),
+            row.unit("nominal_voltage_kv", "kV"),
+        )
+        if voltage > 0:
+            return voltage
+        if self.config.buses is None:
+            raise ValueError("Bus nominal voltage must be greater than zero.")
+        raw = self.config.buses.defaults.get("nominal_voltage_kv")
+        if raw is None:
+            raise ValueError("Bus nominal voltage must be greater than zero.")
+        try:
+            default = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Bus nominal voltage must be greater than zero.") from exc
+        if default <= 0:
+            raise ValueError("Bus nominal voltage must be greater than zero.")
+        return default
 
     @staticmethod
     def _line_length_km(row: RowAccessor) -> float:

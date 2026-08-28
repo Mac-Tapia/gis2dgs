@@ -147,9 +147,29 @@ def test_mapper_requires_line_type_when_policy_is_strict() -> None:
 
 def test_mapper_can_map_without_types_when_policy_allows_it() -> None:
     network, _ = sample_network()
-    policy = PowerFactoryMappingPolicy(require_type_references=False)
+    policy = PowerFactoryMappingPolicy(
+        require_type_references=False,
+        fallback_line_types_by_voltage=False,
+    )
     model = PowerFactoryMapper(policy).map(network, None)
     assert model.get("GIS2DGS:line:L1").references.get("type") is None
+
+
+def test_mapper_assigns_voltage_fallback_when_library_type_missing() -> None:
+    network, library = sample_network()
+    network.lines[LineId("L1")] = Line(
+        LineId("L1"),
+        "Line 1",
+        BusId("B1"),
+        BusId("B2"),
+        1.2,
+        10.0,
+        "MISSING_CODE",
+    )
+    policy = PowerFactoryMappingPolicy(require_type_references=False)
+    model = PowerFactoryMapper(policy).map(network, library)
+    line = model.get("GIS2DGS:line:L1")
+    assert line.references["type"].target_key == "GIS2DGS:ltype:LT1"
 
 
 def test_mapper_rejects_unknown_bus() -> None:

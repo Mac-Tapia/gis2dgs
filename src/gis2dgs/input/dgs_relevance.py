@@ -1,7 +1,8 @@
-"""Select tabular inventory files that contribute to a DGS network model.
+"""Heuristics for tabular inventory filenames (advisory hints only).
 
-Non-electrical layers (roads, guy wires, lighting, concession polygons, etc.)
-are left on disk and never inspected or converted.
+The integral load path inspects every detectable data file in a package.
+These helpers classify names for progress messages and optional tooling;
+they must not drop user-provided inputs.
 """
 
 from __future__ import annotations
@@ -34,6 +35,11 @@ _INCLUDE_MARKERS: tuple[tuple[str, ...], ...] = (
     ("set",),
     ("salida",),
     ("amt",),
+    ("eqpm",),
+    ("nmt",),
+    ("equipo",),
+    ("carga",),
+    ("red",),
     ("alimentador",),
     ("suministro",),
     ("suministros",),
@@ -109,16 +115,25 @@ def _matches_markers(tokens: frozenset[str], markers: tuple[tuple[str, ...], ...
     return False
 
 
+def is_auxiliary_tabular_file(path: Path) -> bool:
+    """Return True when a filename strongly suggests a non-network GIS layer."""
+
+    tokens = _tokens(path)
+    if not tokens:
+        return False
+    if _matches_markers(tokens, _SKIP_MARKERS):
+        return True
+    # Lone "pat" as whole stem/token after BD_ strip
+    return tokens <= {"bd", "pat"} or tokens == {"pat"}
+
+
 def is_dgs_relevant_tabular_file(path: Path) -> bool:
     """Return True when a tabular file name suggests electrical network content."""
 
     tokens = _tokens(path)
     if not tokens:
         return False
-    if _matches_markers(tokens, _SKIP_MARKERS):
-        return False
-    # Lone "pat" as whole stem/token after BD_ strip
-    if tokens <= {"bd", "pat"} or tokens == {"pat"}:
+    if is_auxiliary_tabular_file(path):
         return False
     return _matches_markers(tokens, _INCLUDE_MARKERS)
 
@@ -142,6 +157,13 @@ def _date_rank(path: Path) -> tuple[int, str]:
 def classify_dgs_relevance(path: Path) -> DgsRelevanceDecision:
     resolved = path.expanduser().resolve()
     key = group_key_for_path(resolved)
+    if is_auxiliary_tabular_file(resolved):
+        return DgsRelevanceDecision(
+            path=resolved,
+            include=False,
+            reason="capa auxiliar (vía, zona, retenida, PAT, estructuras, UAP, etc.)",
+            group_key=key,
+        )
     if is_dgs_relevant_tabular_file(resolved):
         return DgsRelevanceDecision(
             path=resolved,
@@ -151,8 +173,8 @@ def classify_dgs_relevance(path: Path) -> DgsRelevanceDecision:
         )
     return DgsRelevanceDecision(
         path=resolved,
-        include=False,
-        reason="capa auxiliar (vía, zona, retenida, PAT, estructuras, UAP, etc.)",
+        include=True,
+        reason="sin marcador de inventario; se inspecciona igualmente",
         group_key=key,
     )
 
@@ -160,9 +182,10 @@ def classify_dgs_relevance(path: Path) -> DgsRelevanceDecision:
 def filter_dgs_relevant_paths(
     paths: tuple[Path, ...] | list[Path],
 ) -> tuple[tuple[Path, ...], tuple[DgsRelevanceDecision, ...]]:
-    """Keep only DGS-relevant tabular files; drop dated duplicates within a group.
+    """Optional helper: prefer electrical layers and dedupe dated inventory copies.
 
-    Returns ``(included_paths, all_decisions)``. Skipped files are not opened.
+    The integral ``load`` path does not call this; it inspects every data file.
+    Returns ``(included_paths, all_decisions)``.
     """
 
     decisions = [classify_dgs_relevance(path) for path in paths]

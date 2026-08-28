@@ -3,7 +3,7 @@
 # para que la próxima ejecución inicie desde cero limpio.
 #
 # Uso: .\scripts\cleanup_mssql.ps1
-# También es invocado automáticamente por RUN.ps1 al cerrar la GUI.
+# Opcional al cerrar la GUI: .\RUN.ps1 -Cleanup  (por defecto el contenedor se deja activo)
 
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $PSScriptRoot

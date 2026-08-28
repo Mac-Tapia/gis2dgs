@@ -4,11 +4,16 @@ foreign_key_prefix: G2D
 include_out_of_service: true
 require_type_references: false
 require_substation_references: false
-include_coordinates: false
+include_coordinates: true
 create_cubicle_switches: true
 create_feeder_graphics: true
 ensure_feeder_sources: true
 prefer_operational_codes: true
+diagrams_per_feeder: true
+# Full IGEA/CYMDIST exports exceed the default 25k-bus graphics cut-off.
+max_buses_for_feeder_graphics: 100000
+terminal_usage: 1
+
 classes:
   network: ElmNet
   substation: ElmSubstat

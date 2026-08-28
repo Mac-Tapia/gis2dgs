@@ -16,12 +16,22 @@ from gis2dgs.assist.decision import (
     weights_from_env,
     weights_tuple,
 )
+from gis2dgs.assist.layer_classifier import (
+    LayerClassificationReport,
+    classify_dataset_layers,
+    entity_assignment_allowed,
+    entity_assignment_boost,
+)
 from gis2dgs.assist.llm import refine_mapping_with_llm
 from gis2dgs.assist.nsga import nsga_ii
 from gis2dgs.assist.scoring import is_numeric_dtype, lexical_score, normalize_token
 from gis2dgs.assist.topsis import topsis_select
 from gis2dgs.config.models import MappingConfig
-from gis2dgs.gis.hierarchical import detect_feeder_column, detect_parent_column
+from gis2dgs.gis.hierarchical import (
+    detect_feeder_column,
+    detect_parent_column,
+    sanitize_line_endpoint_fields,
+)
 from gis2dgs.input.schema.discovery import ColumnSchema, DatasetSchema, TableSchema
 
 UNIT_HINTS: dict[str, str] = {
@@ -130,6 +140,10 @@ _COORDINATE_MARKERS = frozenset(
         "north",
         "coord",
         "coordenada",
+        "coordenadas",
+        "geometr",
+        "geometria",
+        "geometry",
         "utm",
         "longitud",
         "lon",
@@ -201,6 +215,7 @@ class _SearchSpace:
     table_scores: dict[tuple[str, int], float]
     column_scores: dict[tuple[str, str, int], float]
     offsets: list[tuple[str, str | None]]
+    layer_report: LayerClassificationReport
     length: int = 0
     greedy: list[int] = field(default_factory=list)
 
@@ -360,6 +375,7 @@ def suggest_mapping(
         "selected_objectives": objectives_as_dict(candidate_obj[selected_offset]),
         "llm_used": llm_used,
         "warnings": _warnings(mapping, schema),
+        "layer_classification": space.layer_report.as_dict(),
         "note": (
             "This YAML is a mapping proposal. Conversion still requires NetworkModel "
             "and validation via project.yaml; it does not write DGS by itself."
@@ -403,6 +419,7 @@ def mapping_to_yaml_payload(mapping: MappingConfig) -> dict[str, Any]:
 
 def _build_space(schema: DatasetSchema) -> _SearchSpace:
     tables = schema.tables
+    layer_report = classify_dataset_layers(tables)
     table_choices: dict[str, list[int]] = {}
     column_choices: dict[tuple[str, str], list[int]] = {}
     table_scores: dict[tuple[str, int], float] = {}
@@ -410,13 +427,15 @@ def _build_space(schema: DatasetSchema) -> _SearchSpace:
     offsets: list[tuple[str, str | None]] = []
 
     for entity in ENTITIES:
-        ranked_tables = _rank_tables(entity, tables)
+        ranked_tables = _rank_tables(entity, tables, layer_report=layer_report)
         table_choices[entity.name] = ranked_tables
         for table_index in ranked_tables:
             table_scores[(entity.name, table_index)] = (
                 0.0
                 if table_index < 0
-                else _combined_table_score(entity, table_index, tables)
+                else _combined_table_score(
+                    entity, table_index, tables, layer_report=layer_report
+                )
             )
         offsets.append((entity.name, None))
         for spec in entity.fields:
@@ -435,6 +454,7 @@ def _build_space(schema: DatasetSchema) -> _SearchSpace:
         table_scores=table_scores,
         column_scores=column_scores,
         offsets=offsets,
+        layer_report=layer_report,
         length=len(offsets),
     )
     space.greedy = _greedy(space)
@@ -595,8 +615,63 @@ def _field_is_plausible(spec: FieldSpec, table: TableSchema) -> bool:
     return _best_field_score_on_table(spec, table) >= _field_accept_threshold(spec)
 
 
+def _bus_topology_signature(table: TableSchema) -> float:
+    """Score tables that look like point nodes from column shape alone."""
+
+    entity = next(item for item in ENTITIES if item.name == "buses")
+    specs = {spec.name: spec for spec in entity.fields}
+    id_score = _best_field_score_on_table(specs["id"], table)
+    if id_score < COLUMN_SCORE_MIN:
+        return 0.0
+    x_score = _best_field_score_on_table(specs["x"], table)
+    y_score = _best_field_score_on_table(specs["y"], table)
+    if x_score >= COLUMN_SCORE_MIN and y_score >= COLUMN_SCORE_MIN:
+        signature = min(1.0, (id_score + x_score + y_score) / 3.0)
+    else:
+        signature = id_score * 0.5
+    name_score = lexical_score(
+        table.name,
+        next(item.table_aliases for item in ENTITIES if item.name == "buses"),
+    )
+    if name_score < 0.55:
+        row_factor = min(1.0, table.rows / 10.0)
+        signature *= max(0.05, row_factor)
+    return signature
+
+
+def _line_geometry_signature(table: TableSchema) -> float:
+    """Score span tables with endpoint coordinates (X1/Y1/X2/Y2 style exports)."""
+
+    entity = next(item for item in ENTITIES if item.name == "lines")
+    id_spec = next(spec for spec in entity.fields if spec.name == "id")
+    id_score = _best_field_score_on_table(id_spec, table)
+    if id_score < COLUMN_SCORE_MIN:
+        return 0.0
+
+    def endpoint_score(prefix: str) -> float:
+        best = 0.0
+        for column in table.columns:
+            token = normalize_token(column.name)
+            if token == prefix or token.startswith(prefix):
+                if any(marker in token for marker in _COORDINATE_MARKERS):
+                    best = max(best, 1.0 if token == prefix else 0.92)
+        return best
+
+    x1 = endpoint_score("x1")
+    y1 = endpoint_score("y1")
+    x2 = endpoint_score("x2")
+    y2 = endpoint_score("y2")
+    if min(x1, y1, x2, y2) < 0.85:
+        return 0.0
+    return min(1.0, (id_score + x1 + y1 + x2 + y2) / 5.0)
+
+
 def _combined_table_score(
-    entity: EntitySpec, table_index: int, tables: tuple[TableSchema, ...]
+    entity: EntitySpec,
+    table_index: int,
+    tables: tuple[TableSchema, ...],
+    *,
+    layer_report: LayerClassificationReport | None = None,
 ) -> float:
     table = tables[table_index]
     name_score = lexical_score(table.name, entity.table_aliases)
@@ -607,10 +682,28 @@ def _combined_table_score(
     column_scores = [_best_field_score_on_table(spec, table) for spec in required_specs]
     column_score = sum(column_scores) / len(column_scores)
     combined = max(name_score, column_score * 0.92)
+    if entity.name == "buses":
+        bus_signature = _bus_topology_signature(table)
+        if bus_signature >= 0.62:
+            combined = max(combined, bus_signature * 0.96)
+        if name_score < 0.55 and table.rows < 10:
+            combined *= max(0.05, table.rows / 10.0)
+    elif entity.name == "lines":
+        line_signature = _line_geometry_signature(table)
+        if line_signature >= 0.62:
+            combined = max(combined, line_signature * 0.94)
     if id_spec is not None:
         combined = max(combined, _best_field_score_on_table(id_spec, table) * 0.98)
     if name_score < 0.50:
-        combined = min(combined, name_score + 0.18)
+        signature = (
+            _bus_topology_signature(table)
+            if entity.name == "buses"
+            else _line_geometry_signature(table)
+            if entity.name == "lines"
+            else 0.0
+        )
+        if signature < 0.62:
+            combined = min(combined, name_score + 0.18)
     # Prefer distribution (BT) line inventories and MT feeder sources over AT trunks.
     prefix = _table_voltage_prefix(table.name)
     if entity.name == "lines" and prefix == "bt":
@@ -625,10 +718,23 @@ def _combined_table_score(
         [column.name for column in table.columns]
     ):
         combined = min(1.0, combined + 0.04)
+    if layer_report is not None:
+        role_boost = entity_assignment_boost(
+            table,
+            entity.name,
+            report=layer_report,
+        )
+        if role_boost >= 0.55:
+            combined = max(combined, role_boost * 0.97)
     return combined
 
 
-def _table_qualifies_for_entity(entity: EntitySpec, table: TableSchema) -> bool:
+def _table_qualifies_for_entity(
+    entity: EntitySpec,
+    table: TableSchema,
+    *,
+    layer_report: LayerClassificationReport | None = None,
+) -> bool:
     spec_by_name = {spec.name: spec for spec in entity.fields}
     id_spec = spec_by_name.get("id")
     if id_spec is not None and not _field_is_plausible(id_spec, table):
@@ -636,7 +742,19 @@ def _table_qualifies_for_entity(entity: EntitySpec, table: TableSchema) -> bool:
     if entity.name == "buses":
         name_score = lexical_score(table.name, entity.table_aliases)
         token = normalize_token(table.name)
-        if name_score < 0.55:
+        if layer_report is not None and not entity_assignment_allowed(
+            table,
+            entity.name,
+            report=layer_report,
+        ):
+            return False
+        if name_score < 0.55 and _bus_topology_signature(table) < 0.62:
+            return False
+        if (
+            name_score < 0.55
+            and table.rows < 3
+            and _bus_topology_signature(table) < 0.90
+        ):
             return False
         if any(
             marker in token
@@ -649,6 +767,16 @@ def _table_qualifies_for_entity(entity: EntitySpec, table: TableSchema) -> bool:
             voltage_score = _best_field_score_on_table(voltage_spec, table)
             if voltage_score >= 0.90 and id_score < 0.72:
                 return False
+    if entity.name == "lines":
+        name_score = lexical_score(table.name, entity.table_aliases)
+        if layer_report is not None and not entity_assignment_allowed(
+            table,
+            entity.name,
+            report=layer_report,
+        ):
+            return False
+        if name_score < 0.55 and _line_geometry_signature(table) < 0.62:
+            return False
     if entity.name == "substations":
         name_score = lexical_score(table.name, entity.table_aliases)
         token = normalize_token(table.name)
@@ -672,11 +800,23 @@ def _table_qualifies_for_entity(entity: EntitySpec, table: TableSchema) -> bool:
     return True
 
 
-def _rank_tables(entity: EntitySpec, tables: tuple[TableSchema, ...]) -> list[int]:
+def _rank_tables(
+    entity: EntitySpec,
+    tables: tuple[TableSchema, ...],
+    *,
+    layer_report: LayerClassificationReport | None = None,
+) -> list[int]:
     scored = [
-        (_combined_table_score(entity, index, tables), index)
+        (
+            _combined_table_score(
+                entity, index, tables, layer_report=layer_report
+            ),
+            index,
+        )
         for index, table in enumerate(tables)
-        if _table_qualifies_for_entity(entity, table)
+        if _table_qualifies_for_entity(
+            entity, table, layer_report=layer_report
+        )
     ]
     scored.sort(key=lambda item: (-item[0], item[1]))
     chosen = [index for score, index in scored[:TOP_K_TABLES] if score >= TABLE_SCORE_MIN]
@@ -763,7 +903,7 @@ def _greedy(space: _SearchSpace) -> list[int]:
         if score < TABLE_SCORE_MIN:
             continue
         leader_score, leader_entity = leaders.get(table_index, (0.0, ""))
-        if leader_score >= 0.85 and leader_entity != entity_name:
+        if leader_score >= 0.72 and leader_entity != entity_name:
             continue
         table_choice_by_entity[entity_name] = choice
         used_tables.add(table_index)
@@ -808,7 +948,7 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
             continue
         table = space.tables[table_index]
         leader_score, leader_entity = table_name_leader.get(table_index, (0.0, ""))
-        if leader_score >= 0.85 and leader_entity != entity.name:
+        if leader_score >= 0.72 and leader_entity != entity.name:
             continue
         if not _table_qualifies_for_entity(entity, table):
             continue
@@ -872,9 +1012,15 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
             continue
         if entity.name == "lines":
             _apply_hierarchical_line_defaults(table, fields)
+            sanitize_line_endpoint_fields(
+                [column.name for column in table.columns],
+                fields,
+            )
         _sanitize_display_name_field(table, fields)
         _sanitize_coordinate_fields(table, fields)
         _sanitize_voltage_field(table, fields)
+        if entity.name in {"lines", "switches", "loads", "generators", "sources", "transformers"}:
+            _sanitize_in_service_field(table, fields)
         if entity.name == "buses":
             _sanitize_bus_id_field(table, fields)
         if entity.name == "loads":
@@ -934,6 +1080,15 @@ def _decode(space: _SearchSpace, chromosome: list[int]) -> MappingConfig:
         )
         pending = [preferred_line] + [
             item for item in pending if item is not preferred_line
+        ]
+    bus_candidates = [item for item in pending if item[2] == "buses"]
+    if len(bus_candidates) > 1:
+        preferred_bus = max(
+            bus_candidates,
+            key=lambda item: (space.tables[item[4]].rows, item[0], item[1]),
+        )
+        pending = [preferred_bus] + [
+            item for item in pending if item is not preferred_bus
         ]
     line_prefix: str | None = None
     for _table_score, _name_score, entity_name, layer, table_index in pending:
@@ -1055,8 +1210,32 @@ def _sanitize_voltage_field(table: TableSchema, fields: dict[str, str]) -> None:
         "description",
         "nombre",
         "name",
+        "codigo",
+        "code",
     }:
         fields.pop("nominal_voltage_kv", None)
+        return
+    if not is_numeric_dtype(column.dtype) and not any(
+        marker in token for marker in ("tension", "volt", "kv", "nominal", "tennom")
+    ):
+        fields.pop("nominal_voltage_kv", None)
+
+
+def _sanitize_in_service_field(table: TableSchema, fields: dict[str, str]) -> None:
+    """Drop in_service mappings that point at GIS lifecycle/edit columns."""
+
+    column_name = fields.get("in_service")
+    if not column_name:
+        return
+    token = normalize_token(column_name)
+    if token.startswith("estadog") or "estado_g" in column_name.casefold():
+        fields.pop("in_service", None)
+        return
+    if any(
+        marker in token
+        for marker in ("geometr", "edicion", "edit", "cambio", "modific", "correg")
+    ):
+        fields.pop("in_service", None)
 
 
 def _sanitize_bus_id_field(table: TableSchema, fields: dict[str, str]) -> None:

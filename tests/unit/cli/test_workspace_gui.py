@@ -6,6 +6,7 @@ import yaml
 from gis2dgs.cli.main import build_parser
 from gis2dgs.cli.workspace import (
     LoadedFileKind,
+    _select_conversion_paths,
     classify_file,
     classify_paths,
     detect_project_sources,
@@ -77,6 +78,14 @@ def test_classify_input_folder_detects_all_csv() -> None:
     names = {path.name for path in loaded.members}
     assert names == {"buses.csv", "lines.csv", "loads.csv", "sources.csv"}
 
+
+def test_select_conversion_paths_keeps_all_package_files(tmp_path: Path) -> None:
+    names = ("AMT_IN110.xlsx", "EQPM_IN110.xlsx", "NMT_IN110.xlsx", "custom_layer.csv")
+    paths = tuple(tmp_path / name for name in names)
+    for path in paths:
+        path.write_bytes(b"pk")
+    selected = _select_conversion_paths(paths, announce=False)
+    assert selected == paths
 
 def test_classify_paths_cymdist_bundle() -> None:
     fixtures = ROOT / "tests" / "fixtures" / "cymdist"

@@ -44,6 +44,8 @@ def test_step_by_step_guide_covers_load_to_convert() -> None:
     assert "suggest-mapping" in text
     assert "Proponer mapping" in text
     assert "python -m gis2dgs load" in text
+    assert "cymdist_030826" in text
+    assert "SUPPORTED_INPUTS" in text or "Entradas universales" in text
 
 
 def test_certification_benchmark_is_part_of_the_integral_contract() -> None:

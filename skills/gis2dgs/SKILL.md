@@ -128,14 +128,29 @@ python -m gis2dgs convert examples/mssql_backup/project.yaml --json
 
 ## 6. Protocolo de modificación
 
-1. Identifique la capa responsable.
+1. Identifique la capa responsable (`input/`, `assist/`, `gis/`, `domain/`, `dgs/`, …).
 2. Cambie sólo esa capa y contratos estrictamente necesarios.
 3. Si agrega un formato, implemente un reader/adaptador y regístrelo; no toque el dominio.
-4. Si cambia el mapping de una empresa, modifique YAML; no hardcodee columnas.
+4. Si cambia el mapping de una empresa, modifique YAML (`config/layer_profiles.yaml`, `mapping.yaml`); no hardcodee columnas ni marcas GIS.
 5. Si agrega un objeto eléctrico, extienda dominio → mapping → topología/validación → PowerFactory → DGS.
 6. Añada pruebas unitarias y, cuando corresponda, una prueba de integración.
 7. Ejecute las verificaciones del §7.
 8. Actualice documentación si cambia el comportamiento público.
+
+### Backlog por capa (robustez universal)
+
+| Capa | Responsabilidad | Extensión sin código |
+|------|-----------------|----------------------|
+| `input/` | Lectura física, detección de formato | Nuevo reader + registro |
+| `assist/layer_classifier.py` | Rol eléctrico por firma de esquema | `config/layer_profiles.yaml` |
+| `assist/catalog.py` | Alias léxicos de campos/tablas | Entradas en catálogo |
+| `config/mapping.yaml` | Mapeo confirmado por proyecto | Edición YAML tras `suggest-mapping` |
+| `gis/mapping/` | Tabla → `NetworkModel` | Mapping + defaults/units |
+| `validation/` | Reglas de readiness | `validation.yaml` profile |
+
+Salida de inspección: `output/.../layer_classification.yaml` documenta qué tabla se interpretó como nodo/tramo/alimentador/carga antes del mapping NSGA-II.
+
+Referencias externas alineadas: [Power Grid Model tabular mapping](https://power-grid-model-io.readthedocs.io/en/stable/converters/tabular_converter.html), [LinkML Map](https://github.com/linkml/linkml-map/blob/main/docs/index.md) (YAML declarativo, independiente del runtime).
 
 ## 7. Verificación obligatoria
 
@@ -218,9 +233,8 @@ Tras convertir, comprobar `output/loaded/<proyecto>/output/` (`red_dgs.xlsx`, `v
 ### Pitfalls
 
 - No escribir DGS saltando `NetworkModel` / validación.
-- No filtrar capas eléctricas útiles; el filtro DGS omite vía/PAT/UAP/duplicados fechados.
-- Columnas identificador compactadas a `float32` se resuelven en GIS jerárquico — no “castear a mano”
-  en el dominio.
+- No descartar archivos permitidos del paquete cargado; el filtro por nombre es sólo heurística informativa.
+- Extender `config/layer_profiles.yaml` antes de añadir reglas ad hoc en `assist/service.py`.
 - Pedir confirmación antes de `git commit` / `git push`.
 
 ### Verification

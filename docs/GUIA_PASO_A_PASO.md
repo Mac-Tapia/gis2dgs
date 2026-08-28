@@ -150,18 +150,46 @@ Consultas SQL van en `options.queries` del YAML, no como archivo `.sql` suelto.
 
 ## Qué detecta la interfaz (como está programado el conversor)
 
-Al cargar **`project.yaml`** o **Cargar carpeta…** sobre `examples\minimal`, lista **todas** las fuentes del proyecto y su formato:
+Al cargar **`project.yaml`** o **Cargar carpeta…**, lista las fuentes y su formato
+físico (nunca la marca GIS). Inventario: `docs\SUPPORTED_INPUTS.md`.
 
 - Excel: `.xlsx` `.xlsm` `.xls`
 - Tablas: `.csv` `.tsv`
 - Vector: `.shp` `.gpkg` `.geojson` `.json` `.gml` `.kml` y carpeta `.gdb`
+- Texto de red seccionado (export CYMDIST): `.txt` con `RED_` / `CARGA_` (secciones)
 - Parquet: `.parquet` `.pq`
 - SQLite: `.sqlite` `.sqlite3` `.db`
+- Backup SQL Server: `.bak` (o `TAPE` sin extensión)
 - Bases por URL: `postgresql://` `mssql://` `oracle://` `mysql://` `sqlite://`
 
 **Cargar carpeta…** sobre `examples\minimal\input` detecta los cuatro CSV (`buses`, `lines`, `loads`, `sources`).
 
 **Cargar carpeta…** sobre `examples\minimal` detecta el `project.yaml` y, al Ejecutar, convierte las cuatro tablas.
+
+**Cargar carpeta…** / **Cargar varios…** admite paquetes mixtos (p. ej. shapefile + CSV,
+o varios `.txt` CYMDIST). Detalle de paquete: `output\loaded\<nombre>\output\bundle_assessment.yaml`.
+
+## Entradas universales (IGEA / QGIS / tablas / otros)
+
+No hay conversor “IGEA” ni “QGIS”: exporte al formato físico y use el mismo flujo
+(`inspect-input` → mapping → `convert` / GUI **Ejecutar**).
+
+| Caso | Qué poner en el diálogo / CLI | Comando de ejemplo |
+| --- | --- | --- |
+| Tablas Excel/CSV | Archivo, carpeta de CSV, o `examples\minimal\project.yaml` | `python -m gis2dgs convert examples\minimal\project.yaml --json` |
+| Export texto CYMDIST (`RED_*.txt` + `CARGA_*.txt`) | Carpeta del paquete, o `examples\cymdist_030826\project.yaml` | `python -m gis2dgs convert examples\cymdist_030826\project.yaml --json` |
+| Capas QGIS (shp / gpkg / geojson) | Archivo o carpeta de capas; luego **Proponer mapping** si hace falta | `python -m gis2dgs load C:\ruta\capas --json` |
+| PostGIS / SQL Server / `.bak` | URL en `project.yaml`, o `.bak` + `ensure_mssql.ps1` | ver sección Backup SQL Server arriba |
+
+Flujo corto sin `project.yaml` previo:
+
+```powershell
+python -m gis2dgs load C:\ruta\paquete_o_archivo --json
+```
+
+Artefactos en `output\loaded\<nombre>\` (`project.yaml`, `red_dgs.xlsx`, `validation.json`).
+Si las columnas no coinciden con la plantilla, use **Proponer mapping** / `suggest-mapping`
+antes de dar por bueno el DGS.
 
 ---
 
@@ -171,27 +199,16 @@ En PowerShell, en la carpeta del proyecto:
 
 ```powershell
 cd D:\converter\gisdgsv1
-.\.venv\Scripts\Activate.ps1
 .\RUN.ps1
 ```
 
-Equivale a cualquiera de estos:
+(Primera vez sin `.venv`: el mismo comando ejecuta `INSTALL_AND_VERIFY.ps1` y abre la interfaz.)
+
+Equivale, con el entorno ya instalado:
 
 ```powershell
-python -m gis2dgs
+.\.venv\Scripts\python.exe -m gis2dgs
 ```
-
-```powershell
-python -m gis2dgs gui
-```
-
-Si no existe `.venv`:
-
-```powershell
-.\INSTALL_AND_VERIFY.ps1
-```
-
-y después otra vez `.\RUN.ps1`.
 
 Se abre la ventana **GIS2DGS** (pantalla principal). El diálogo de archivos **no** se abre solo: use **Cargar archivo…**, **Cargar varios…** o **Cargar carpeta…** cuando quiera.
 
@@ -292,15 +309,17 @@ python -m gis2dgs convert output\mi_proyecto\project.yaml --json
 
 | Quiere | En el diálogo elija | Al pulsar Ejecutar |
 | --- | --- | --- |
-| **Convertir a DGS** | `project.yaml` | Genera el Excel DGS |
-| Solo ver columnas del Excel/CSV/SHP | el archivo de datos | Inspección, sin DGS |
+| **Convertir a DGS** (proyecto listo) | `project.yaml` | Genera el Excel DGS |
+| **Convertir a DGS** (datos sueltos / carpeta) | Excel, CSV, SHP/GPKG/GeoJSON, TXT CYMDIST, `.bak`, etc. | Scaffold + pipeline → `output\loaded\<nombre>\` |
+| Solo ver columnas (sin DGS) | el archivo + consola `inspect-input` | Esquema YAML |
 | Ver estructura de un DGS de referencia | `SALIDA_DGS.xlsx` | Inspección DGS |
 
 Rutas listas para el diálogo:
 
-- Convertir ahora: `D:\converter\gisdgsv1\examples\minimal\project.yaml`
-- Verificar real: `D:\converter\gisdgsv1\output\entrada\M_ALIMENTAD.xlsx`
-- Convertir real (cuando exista el proyecto): `D:\converter\gisdgsv1\output\mi_proyecto\project.yaml`
+- Convertir CSV mínimo: `examples\minimal\project.yaml`
+- Convertir export texto CYMDIST: `examples\cymdist_030826\project.yaml`
+- Verificar real (copiar fuera de `data\reference\real\`): `output\entrada\M_ALIMENTAD.xlsx`
+- Convertir real (cuando exista el proyecto): `output\mi_proyecto\project.yaml`
 
 ---
 
@@ -337,6 +356,7 @@ Convertir (el archivo que la interfaz carga para DGS):
 
 ```powershell
 python -m gis2dgs convert examples\minimal\project.yaml --json
+python -m gis2dgs convert examples\cymdist_030826\project.yaml --json
 python -m gis2dgs convert output\mi_proyecto\project.yaml --json
 ```
 
@@ -353,6 +373,12 @@ python -m gis2dgs dgs inspect-template data\reference\real\SALIDA_DGS.xlsx --out
 1. Pulse **Abrir salida** o vaya a la carpeta `output` del proyecto.
 2. En PowerFactory: `File > Import > DGS`.
 3. Elija el `.xlsx` generado (no el de `data\reference\real\`).
-4. Revise el log y ejecute un flujo de carga.
+4. Tras un import OK (`Creating graphic objects…` / `DGS-Import successfully executed`):
+   - Abra la página gráfica **IntGrfnet** (`NETWORK` o el id del alimentador), no sólo la carpeta `ElmNet`.
+   - Use **Fit to page** / zoom completo (símbolos cerca del origen en unidades de diagrama).
+   - Quite o amplíe el filtro de nivel de tensión (p. ej. filtro en 110 kV con red MT/BT deja el canvas vacío).
+   - Las barras se exportan como **nodos (punto)** (`iUsage=1`, símbolo `Term`); al inicio de cada alimentador debe aparecer un **equivalente / fuente infinita** (`ElmXnet`, `d_sym`).
+   - Cables aéreos: si el Excel de tramos solo trae `GEOMETRÍA = "Linea: N Coordenadas"` sin X/Y, use la capa de **estructuras/torres** (`connectivity.point_chain_*` en `mapping.yaml`). El conversor ordena esos puntos, asigna inicio/fin de cada tramo y conecta a nodos con las **mismas coordenadas**.
+5. Revise el log y ejecute un flujo de carga. Si el diagrama sigue vacío, regenere el DGS con esta versión del conversor.
 
 `validation.json` debe mostrar `"valid": true` y `"errors": 0`.

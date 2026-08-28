@@ -33,9 +33,10 @@ classes:
         column: GPSlon(r)
       coordinate_y:
         column: GPSlat(r)
+      usage:
+        column: iUsage(i)
     static_values:
       OP(a:1): C
-      iUsage(i): 0
   TypLne:
     table: TypLne
     identity:
@@ -260,6 +261,7 @@ classes:
         column: pDataFolder(p)
     static_values:
       OP(a:1): C
+      grid_on(i): 1
   IntGrf:
     table: IntGrf
     identity:
@@ -285,10 +287,14 @@ classes:
       name_column: loc_name(a:80)
       parent_column: fold_id(p)
     attributes:
+      r_x_sizerow:
+        column: rX:SIZEROW(i)
       r_x0:
         column: rX:0(r)
       r_x1:
         column: rX:1(r)
+      r_y_sizerow:
+        column: rY:SIZEROW(i)
       r_y0:
         column: rY:0(r)
       r_y1:

@@ -58,6 +58,14 @@ class ConnectivityConfig(BaseModel):
     apply_unambiguous: bool = True
     tolerance_m: float = 2.0
     tie_tolerance_m: float = 1e-6
+    # When line GEOMETRÍA lacks XY, rebuild start/end from an ordered point layer
+    # (e.g. structures/towers) sharing a feeder/line key.
+    point_chain_source: str | None = None
+    point_chain_key_field: str | None = None
+    point_chain_sequence_field: str | None = None
+    point_chain_id_field: str | None = None
+    point_chain_x_field: str | None = None
+    point_chain_y_field: str | None = None
 
 
 class MappingConfig(BaseModel):

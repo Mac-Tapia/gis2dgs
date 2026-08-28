@@ -9,7 +9,11 @@ from .graphics import attach_feeder_graphics, ensure_feeder_head_sources
 from .ids import ForeignKeyFactory, sanitize_loc_name
 from .mapping import PowerFactoryMapper
 from .model import PowerFactoryModel, PowerFactoryObject, PowerFactoryReference
-from .policy import PowerFactoryClassMap, PowerFactoryMappingPolicy
+from .policy import (
+    PowerFactoryClassMap,
+    PowerFactoryGraphicSymbols,
+    PowerFactoryMappingPolicy,
+)
 from .validation import (
     MappingSeverity,
     PowerFactoryMappingIssue,
@@ -26,6 +30,7 @@ __all__ = [
     "PowerFactoryClass",
     "PowerFactoryClassMap",
     "PowerFactoryClient",
+    "PowerFactoryGraphicSymbols",
     "PowerFactoryMapper",
     "PowerFactoryMappingError",
     "PowerFactoryMappingIssue",

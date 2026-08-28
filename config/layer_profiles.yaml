@@ -1,0 +1,85 @@
+# Perfiles declarativos de capas eléctricas (schema-driven).
+# El clasificador usa firma de columnas + nombre de tabla; no depende de marca GIS.
+version: 1
+roles:
+  buses:
+    min_rows: 3
+    name_markers:
+      - nodo
+      - nodos
+      - node
+      - nodes
+      - bus
+      - buses
+      - barra
+      - nmt
+      - estructura
+      - estructuras
+      - structure
+      - poste
+      - postes
+      - punto
+      - puntoconexion
+    signatures:
+      point_node:
+        fields: [id, x, y]
+        weight: 1.0
+  lines:
+    name_markers:
+      - tramo
+      - tramos
+      - line
+      - lines
+      - linea
+      - conductor
+      - section
+      - eqpm
+      - equipo
+      - segment
+      - span
+    signatures:
+      connectivity:
+        fields: [id, from_bus, to_bus]
+        weight: 1.0
+      span_geometry:
+        fields: [id]
+        endpoint_geometry: true
+        weight: 0.92
+  sources:
+    max_rows: 12
+    name_markers:
+      - amt
+      - alimentador
+      - feeder
+      - salida
+      - fuente
+      - source
+      - grid
+    signatures:
+      feeder_row:
+        fields: [id]
+        weight: 0.75
+  loads:
+    name_markers:
+      - carga
+      - cargas
+      - load
+      - loads
+      - suministro
+      - suministros
+      - acometida
+      - customer
+    signatures:
+      load_point:
+        fields: [id, bus_id]
+        weight: 1.0
+  transformers:
+    name_markers:
+      - transformador
+      - transformer
+      - trafo
+      - trafos
+    signatures:
+      transformer_ports:
+        fields: [id, hv_bus, lv_bus]
+        weight: 1.0

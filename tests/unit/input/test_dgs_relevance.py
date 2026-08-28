@@ -63,3 +63,18 @@ def test_keeps_english_canonical_layer_names(tmp_path: Path) -> None:
         path = tmp_path / name
         path.write_text("id\n1\n", encoding="utf-8")
         assert is_dgs_relevant_tabular_file(path) is True
+
+
+def test_igea_feeder_excel_layers_are_electrical(tmp_path: Path) -> None:
+    for name in ("AMT_IN110.xlsx", "EQPM_IN110.xlsx", "NMT_IN110.xlsx"):
+        path = tmp_path / name
+        path.write_bytes(b"pk")
+        assert is_dgs_relevant_tabular_file(path) is True
+
+
+def test_filter_includes_unknown_tabular_names(tmp_path: Path) -> None:
+    path = tmp_path / "custom_network_layer.csv"
+    path.write_text("id\n1\n", encoding="utf-8")
+    included, decisions = filter_dgs_relevant_paths([path])
+    assert included == (path,)
+    assert decisions[0].include is True

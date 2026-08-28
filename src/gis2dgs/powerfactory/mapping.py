@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from gis2dgs.domain import NetworkModel
-from gis2dgs.electrical import ElectricalLibrary
+from gis2dgs.electrical import ElectricalLibrary, LineType
+
+if TYPE_CHECKING:
+    from gis2dgs.gis.dataset import GisDataset
 
 from .exceptions import PowerFactoryMappingError
-from .graphics import attach_feeder_graphics, ensure_feeder_head_sources
+from .graphics import (
+    attach_feeder_graphics,
+    collect_line_geometry_endpoints,
+    ensure_feeder_head_sources,
+)
 from .ids import ForeignKeyFactory
 from .model import PowerFactoryModel, PowerFactoryObject, PowerFactoryReference
 from .policy import PowerFactoryMappingPolicy
@@ -31,6 +38,10 @@ class PowerFactoryMapper:
         self,
         network: NetworkModel,
         library: ElectricalLibrary | None = None,
+        *,
+        gis_dataset: GisDataset | None = None,
+        line_layer: str | None = None,
+        line_id_field: str | None = None,
     ) -> PowerFactoryModel:
         policy = self.policy
         if (
@@ -66,6 +77,11 @@ class PowerFactoryMapper:
             policy=policy,
             network_keys=net_keys,
             default_network_key=default_net,
+            line_geometry_endpoints=collect_line_geometry_endpoints(
+                gis_dataset,
+                line_layer=line_layer,
+                line_id_field=line_id_field,
+            ),
         )
 
         ensure_unique_display_names(model)
@@ -157,7 +173,10 @@ class PowerFactoryMapper:
         default_net: str,
     ) -> None:
         for bus in network.buses.values():
-            attrs: dict[str, Any] = {"nominal_voltage_kv": bus.nominal_voltage_kv}
+            attrs: dict[str, Any] = {
+                "nominal_voltage_kv": bus.nominal_voltage_kv,
+                "usage": self.policy.terminal_usage,
+            }
             attrs.update(self._coordinates(bus.x, bus.y))
             if bus.feeder_id is not None:
                 attrs["feeder_id"] = str(bus.feeder_id)
@@ -251,15 +270,9 @@ class PowerFactoryMapper:
                 continue
             element_key = self.keys.make("line", line.id)
             refs: dict[str, PowerFactoryReference] = {}
-            if line.type_id is not None:
-                if library is not None and library.find_line_type(line.type_id) is not None:
-                    refs["type"] = PowerFactoryReference(
-                        self.keys.make("ltype", line.type_id)
-                    )
-                elif self.policy.require_type_references:
-                    self._require_line_type(line.type_id, library, line.id)
-            elif self.policy.require_type_references:
-                raise PowerFactoryMappingError(f"Line {line.id} has no type_id.")
+            type_ref = self._resolve_line_type_reference(model, library, line)
+            if type_ref is not None:
+                refs["type"] = type_ref
 
             side_a, side_b = self._add_two_terminal_cubicles(
                 model,
@@ -604,6 +617,90 @@ class PowerFactoryMapper:
                 f"{source_kind.capitalize()} {source_id} references unknown bus {bus_id}."
             )
 
+    def _resolve_line_type_reference(
+        self,
+        model: PowerFactoryModel,
+        library: ElectricalLibrary | None,
+        line: object,
+    ) -> PowerFactoryReference | None:
+        from gis2dgs.domain.line import Line
+
+        assert isinstance(line, Line)
+        if line.type_id is not None and library is not None:
+            if library.find_line_type(line.type_id) is not None:
+                return PowerFactoryReference(self.keys.make("ltype", line.type_id))
+            if self.policy.require_type_references:
+                self._require_line_type(line.type_id, library, line.id)
+        elif line.type_id is None and self.policy.require_type_references:
+            raise PowerFactoryMappingError(f"Line {line.id} has no type_id.")
+
+        if not self.policy.fallback_line_types_by_voltage:
+            return None
+
+        line_type = self._line_type_for_voltage(library, line.nominal_voltage_kv)
+        self._ensure_line_type_object(model, line_type)
+        return PowerFactoryReference(self.keys.make("ltype", line_type.id))
+
+    def _line_type_for_voltage(
+        self,
+        library: ElectricalLibrary | None,
+        voltage_kv: float,
+    ) -> LineType:
+        if library is not None and library.line_types:
+            matched = min(
+                library.line_types.values(),
+                key=lambda line_type: abs(line_type.nominal_voltage_kv - voltage_kv),
+            )
+            if abs(matched.nominal_voltage_kv - voltage_kv) <= 0.5:
+                return matched
+
+        type_id = self._synthetic_line_type_id(voltage_kv)
+        return LineType(
+            type_id,
+            f"Fallback {voltage_kv:g} kV",
+            voltage_kv,
+            0.40,
+            0.30,
+            250.0,
+            c1_nf_per_km=10.0,
+            r0_ohm_per_km=1.20,
+            x0_ohm_per_km=0.90,
+            c0_nf_per_km=5.0,
+        )
+
+    def _synthetic_line_type_id(self, voltage_kv: float) -> str:
+        text = f"{voltage_kv:.3f}".rstrip("0").rstrip(".")
+        return f"FALLBACK_{text.replace('.', 'p')}kV"
+
+    def _ensure_line_type_object(
+        self,
+        model: PowerFactoryModel,
+        line_type: LineType,
+    ) -> None:
+        key = self.keys.make("ltype", line_type.id)
+        if key in model.objects:
+            return
+        model.add(
+            self._object(
+                self.policy.classes.line_type,
+                key,
+                line_type.name,
+                {
+                    "nominal_voltage_kv": line_type.nominal_voltage_kv,
+                    "r1_ohm_per_km": line_type.r1_ohm_per_km,
+                    "x1_ohm_per_km": line_type.x1_ohm_per_km,
+                    "c1_nf_per_km": line_type.c1_nf_per_km,
+                    "rated_current_a": line_type.rated_current_a,
+                    "r0_ohm_per_km": line_type.r0_ohm_per_km,
+                    "x0_ohm_per_km": line_type.x0_ohm_per_km,
+                    "c0_nf_per_km": line_type.c0_nf_per_km,
+                    "phases": line_type.phases,
+                },
+                source_kind="line_type",
+                source_id=line_type.id,
+            )
+        )
+
     def _require_line_type(
         self,
         type_id: str,
@@ -633,7 +730,16 @@ class PowerFactoryMapper:
     def _coordinates(self, x: float | None, y: float | None) -> dict[str, float]:
         if not self.policy.include_coordinates or x is None or y is None:
             return {}
-        return {"coordinate_x": x, "coordinate_y": y}
+        fx = float(x)
+        fy = float(y)
+        if abs(fx) > 1_000.0 or abs(fy) > 1_000.0:
+            lon, lat = _projected_to_wgs84(
+                fx,
+                fy,
+                source_crs=self.policy.inventory_source_crs,
+            )
+            return {"coordinate_x": lon, "coordinate_y": lat}
+        return {"coordinate_x": fx, "coordinate_y": fy}
 
     def _display_name(
         self,
@@ -673,6 +779,14 @@ class PowerFactoryMapper:
             source_kind=source_kind,
             source_id=source_id,
         )
+
+
+def _projected_to_wgs84(x: float, y: float, *, source_crs: str) -> tuple[float, float]:
+    from geopandas import GeoSeries
+    from shapely.geometry import Point
+
+    point = GeoSeries([Point(x, y)], crs=source_crs).to_crs("EPSG:4326").iloc[0]
+    return float(point.x), float(point.y)
 
 
 def _propagate_system_ids(network: NetworkModel) -> None:

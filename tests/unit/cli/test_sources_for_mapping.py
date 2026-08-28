@@ -13,12 +13,12 @@ def test_mapped_table_names_extracts_entity_sources() -> None:
     assert _mapped_table_names(mapping) == {"BD_SED", "BD_Tramo BT"}
 
 
-def test_sources_for_paths_keeps_only_mapped_excel(tmp_path: Path) -> None:
+def test_sources_for_paths_keeps_every_loaded_file(tmp_path: Path) -> None:
     kept = tmp_path / "BD_SED.xlsx"
-    dropped = tmp_path / "BD_Acometidas.xlsx"
+    other = tmp_path / "BD_Acometidas.xlsx"
     kept.write_bytes(b"pk")
-    dropped.write_bytes(b"pk")
+    other.write_bytes(b"pk")
     mapping = {"buses": {"source": "BD_SED", "fields": {"id": "ID"}}}
-    sources = _sources_for_paths((kept, dropped), mapping=mapping)
+    sources = _sources_for_paths((kept, other), mapping=mapping)
     names = {(item.get("options") or {}).get("table_name") for item in sources}
-    assert names == {"BD_SED"}
+    assert names == {"BD_SED", "BD_Acometidas"}

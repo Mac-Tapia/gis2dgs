@@ -9,6 +9,17 @@ create_cubicle_switches: true
 create_feeder_graphics: true
 ensure_feeder_sources: true
 prefer_operational_codes: true
+diagrams_per_feeder: true
+diagram_layout: auto
+diagram_min_edge_length: 20.0
+diagram_target_extent: 4000.0
+terminal_usage: 1
+graphic_symbols:
+  terminal: Term
+  line: d_lin
+  source: d_sym
+  load: d_load
+  transformer: d_tr2
 classes:
   network: ElmNet
   substation: ElmSubstat

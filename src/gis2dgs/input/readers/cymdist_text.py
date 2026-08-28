@@ -68,17 +68,25 @@ def parse_cymdist_text(path: Path, *, sample_rows: int | None = None) -> tuple[d
     metadata = parse_cymdist_metadata(path)
     tables: dict[str, pd.DataFrame] = {}
     current_section: str | None = None
+    current_logical: str | None = None
     current_columns: list[str] | None = None
+    current_network_id: str | None = None
     rows: list[list[str]] = []
 
     def flush() -> None:
-        nonlocal rows, current_columns, current_section
-        if current_section is None or not rows or not current_columns:
+        nonlocal rows, current_columns, current_section, current_logical
+        if current_logical is None or not rows or not current_columns:
             rows = []
             return
         frame = pd.DataFrame(rows, columns=current_columns)
-        logical = _normalize_section_name(current_section)
-        tables[logical] = frame
+        if (
+            current_logical == "SECTION"
+            and current_network_id
+            and "NetworkID" not in frame.columns
+        ):
+            frame = frame.copy()
+            frame["NetworkID"] = current_network_id
+        _store_table(tables, current_logical, frame)
         rows = []
 
     with path.open("r", encoding="utf-8", errors="replace") as handle:
@@ -92,7 +100,9 @@ def parse_cymdist_text(path: Path, *, sample_rows: int | None = None) -> tuple[d
             if section is not None:
                 flush()
                 current_section = section.group("name")
+                current_logical = _normalize_section_name(current_section)
                 current_columns = None
+                current_network_id = None
                 rows = []
                 continue
 
@@ -102,6 +112,11 @@ def parse_cymdist_text(path: Path, *, sample_rows: int | None = None) -> tuple[d
             format_match = _FORMAT.match(stripped)
             if format_match is not None:
                 flush()
+                format_name = _normalize_section_name(format_match.group("name"))
+                # FORMAT_FEEDER appears inside [SECTION]; keep feeders as their own table.
+                current_logical = (
+                    "FEEDER" if format_name == "FEEDER" else _normalize_section_name(current_section)
+                )
                 current_columns = [
                     column.strip()
                     for column in format_match.group("columns").split(",")
@@ -113,6 +128,31 @@ def parse_cymdist_text(path: Path, *, sample_rows: int | None = None) -> tuple[d
             if current_columns is None:
                 continue
             if stripped.upper().startswith("FEEDER="):
+                # Flush pending SECTION rows with the *previous* NetworkID before
+                # switching feeder context (FEEDER= often precedes the next FORMAT_).
+                flush()
+                payload = stripped.split("=", 1)[1]
+                feeder_cols = (
+                    current_columns
+                    if current_logical == "FEEDER" and current_columns
+                    else [
+                        "NetworkID",
+                        "HeadNodeID",
+                        "CoordSet",
+                        "Year",
+                        "Description",
+                        "Color",
+                        "LoadFactor",
+                    ]
+                )
+                feeder_parts = _split_row(payload, len(feeder_cols))
+                if feeder_parts and feeder_parts[0]:
+                    current_network_id = feeder_parts[0]
+                _store_table(
+                    tables,
+                    "FEEDER",
+                    pd.DataFrame([feeder_parts], columns=feeder_cols),
+                )
                 continue
 
             rows.append(_split_row(stripped, len(current_columns)))
@@ -235,21 +275,163 @@ def _split_row(line: str, expected: int) -> list[str]:
     return parts[:expected]
 
 
+def _store_table(tables: dict[str, pd.DataFrame], logical: str, frame: pd.DataFrame) -> None:
+    """Accumulate rows when the same logical section is flushed more than once.
+
+    CYMDIST exports repeat ``FORMAT_SECTION`` once per feeder; overwriting would
+    keep only the last feeder's topology.
+    """
+
+    existing = tables.get(logical)
+    if existing is None or existing.empty:
+        tables[logical] = frame
+        return
+    if frame.empty:
+        return
+    if list(existing.columns) == list(frame.columns):
+        tables[logical] = pd.concat([existing, frame], ignore_index=True)
+        return
+    all_cols = list(dict.fromkeys([*existing.columns, *frame.columns]))
+    tables[logical] = pd.concat(
+        [existing.reindex(columns=all_cols), frame.reindex(columns=all_cols)],
+        ignore_index=True,
+    )
+
+
 def _enrich_network_tables(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     sections = tables.get("SECTION")
     line_cfg = tables.get("LINE_CONFIGURATION")
-    if sections is None or line_cfg is None:
-        return tables
-    if "SectionID" not in sections.columns or "SectionID" not in line_cfg.columns:
-        return tables
-    merged = sections.merge(
-        line_cfg.drop_duplicates(subset=["SectionID"], keep="first"),
-        on="SectionID",
-        how="left",
-        suffixes=("", "_linecfg"),
-    )
-    tables["SECTION"] = merged
+    if sections is not None and line_cfg is not None:
+        if "SectionID" in sections.columns and "SectionID" in line_cfg.columns:
+            merged = sections.merge(
+                line_cfg.drop_duplicates(subset=["SectionID"], keep="first"),
+                on="SectionID",
+                how="left",
+                suffixes=("", "_linecfg"),
+            )
+            tables["SECTION"] = merged
+            sections = tables["SECTION"]
+
+    nodes = tables.get("NODE")
+    headnodes = tables.get("HEADNODES")
+    if nodes is not None:
+        if (
+            headnodes is not None
+            and "NodeID" in nodes.columns
+            and "NodeID" in headnodes.columns
+            and "NetworkID" in headnodes.columns
+        ):
+            head = headnodes.drop_duplicates(subset=["NodeID"], keep="first")[
+                [column for column in ("NodeID", "NetworkID") if column in headnodes.columns]
+            ]
+            if "NetworkID" in nodes.columns:
+                nodes = nodes.drop(columns=["NetworkID"])
+            nodes = nodes.merge(head, on="NodeID", how="left")
+        if "NetworkID" not in nodes.columns:
+            nodes = nodes.copy()
+            nodes["NetworkID"] = pd.NA
+        nodes = _fill_network_id_from_sources(nodes, tables.get("SOURCE"), sections)
+        tables["NODE"] = nodes
+
+    if sections is not None:
+        if "NetworkID" not in sections.columns:
+            sections = sections.copy()
+            sections["NetworkID"] = pd.NA
+        sections = _fill_section_network_id(sections, tables.get("NODE"))
+        tables["SECTION"] = sections
     return tables
+
+
+def _fill_network_id_from_sources(
+    nodes: pd.DataFrame,
+    sources: pd.DataFrame | None,
+    sections: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Stamp NetworkID on nodes from SOURCE heads, then walk SECTION connectivity.
+
+    Minimal exports often omit [HEADNODES] / FEEDER= and only put NetworkID on SOURCE.
+    """
+
+    if "NodeID" not in nodes.columns or "NetworkID" not in nodes.columns:
+        return nodes
+    result = nodes.copy()
+    assigned: dict[str, str] = {}
+    for _, row in result.iterrows():
+        node_id = str(row["NodeID"]).strip() if pd.notna(row["NodeID"]) else ""
+        net = row["NetworkID"]
+        if node_id and pd.notna(net) and str(net).strip():
+            assigned[node_id] = str(net).strip()
+
+    if sources is not None and {"NodeID", "NetworkID"}.issubset(sources.columns):
+        for _, row in sources.iterrows():
+            node_id = str(row["NodeID"]).strip() if pd.notna(row["NodeID"]) else ""
+            net = str(row["NetworkID"]).strip() if pd.notna(row["NetworkID"]) else ""
+            if node_id and net and node_id not in assigned:
+                assigned[node_id] = net
+
+    if sections is not None and {"FromNodeID", "ToNodeID"}.issubset(sections.columns):
+        edges: list[tuple[str, str]] = []
+        for _, row in sections.iterrows():
+            a = str(row["FromNodeID"]).strip() if pd.notna(row["FromNodeID"]) else ""
+            b = str(row["ToNodeID"]).strip() if pd.notna(row["ToNodeID"]) else ""
+            if a and b:
+                edges.append((a, b))
+        changed = True
+        while changed:
+            changed = False
+            for a, b in edges:
+                if a in assigned and b not in assigned:
+                    assigned[b] = assigned[a]
+                    changed = True
+                elif b in assigned and a not in assigned:
+                    assigned[a] = assigned[b]
+                    changed = True
+
+    if not assigned:
+        return result
+    result["NetworkID"] = [
+        assigned.get(str(node).strip(), net if pd.notna(net) else pd.NA)
+        if pd.notna(node)
+        else (net if pd.notna(net) else pd.NA)
+        for node, net in zip(result["NodeID"], result["NetworkID"], strict=False)
+    ]
+    return result
+
+
+def _fill_section_network_id(
+    sections: pd.DataFrame,
+    nodes: pd.DataFrame | None,
+) -> pd.DataFrame:
+    if nodes is None or "NetworkID" not in sections.columns:
+        return sections
+    if not {"NodeID", "NetworkID"}.issubset(nodes.columns):
+        return sections
+    lookup = {
+        str(row["NodeID"]).strip(): str(row["NetworkID"]).strip()
+        for _, row in nodes.iterrows()
+        if pd.notna(row["NodeID"])
+        and pd.notna(row["NetworkID"])
+        and str(row["NetworkID"]).strip()
+    }
+    if not lookup:
+        return sections
+    result = sections.copy()
+
+    def _net_for(row: pd.Series) -> object:
+        current = row.get("NetworkID")
+        if pd.notna(current) and str(current).strip():
+            return current
+        for key in ("FromNodeID", "ToNodeID"):
+            raw = row.get(key)
+            if pd.isna(raw):
+                continue
+            found = lookup.get(str(raw).strip())
+            if found:
+                return found
+        return current
+
+    result["NetworkID"] = result.apply(_net_for, axis=1)
+    return result
 
 
 def _read_text_header(path: Path, size: int = 4096) -> str:

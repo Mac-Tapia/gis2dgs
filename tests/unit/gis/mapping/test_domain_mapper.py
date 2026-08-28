@@ -642,3 +642,54 @@ def test_mapper_uses_linestring_length_when_length_column_missing() -> None:
 
     line = GisToDomainMapper(config).map(dataset).lines[LineId("L1")]
     assert line.length_km == pytest.approx(1.0)
+
+
+def test_mapper_skips_lines_with_missing_endpoints() -> None:
+    from shapely.geometry import LineString
+
+    dataset = GisDataset()
+    dataset.add_layer(
+        "nodes",
+        gpd.GeoDataFrame(
+            {"id": ["B1", "B2"], "v": [10, 10]},
+            geometry=[Point(0, 0), Point(100, 0)],
+            crs="EPSG:32718",
+        ),
+    )
+    dataset.add_layer(
+        "lines",
+        gpd.GeoDataFrame(
+            {
+                "id": ["L1", "L2"],
+                "from_bus": [None, "B1"],
+                "to_bus": [None, "B2"],
+                "v": [10, 10],
+            },
+            geometry=[
+                LineString([(0, 0), (100, 0)]),
+                LineString([(0, 0), (0, 100)]),
+            ],
+            crs="EPSG:32718",
+        ),
+    )
+    config = MappingConfig.model_validate(
+        {
+            "buses": {
+                "source": "nodes",
+                "fields": {"id": "id", "nominal_voltage_kv": "v"},
+            },
+            "lines": {
+                "source": "lines",
+                "fields": {
+                    "id": "id",
+                    "from_bus": "from_bus",
+                    "to_bus": "to_bus",
+                    "nominal_voltage_kv": "v",
+                },
+            },
+        }
+    )
+
+    network = GisToDomainMapper(config).map(dataset)
+    assert LineId("L1") not in network.lines
+    assert LineId("L2") in network.lines

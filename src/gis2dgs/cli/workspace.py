@@ -25,7 +25,7 @@ from gis2dgs.assist.decision import (
     parse_weights_string,
     weights_from_env,
 )
-from gis2dgs.assist.strategies import ConversionStrategy, parse_strategy
+from gis2dgs.assist.layer_classifier import classify_dataset_layers
 from gis2dgs.config import ResolvedProjectConfig, load_project_config
 from gis2dgs.config.models import MappingConfig
 from gis2dgs.dgs import DgsError, inspect_excel_template
@@ -43,11 +43,7 @@ from gis2dgs.input import (
     merge_datasets,
     programmed_file_suffixes,
 )
-from gis2dgs.input.dgs_relevance import filter_dgs_relevant_paths
-from gis2dgs.input.readers.cymdist_text import (
-    is_cymdist_import_config,
-    is_cymdist_network_export,
-)
+from gis2dgs.input.readers.cymdist_text import is_cymdist_import_config
 from gis2dgs.input.compact import env_sample_rows
 from gis2dgs.pipeline import (
     ConversionResult,
@@ -304,11 +300,22 @@ def _copy_runtime_templates(
         pf_payload = yaml.safe_load(pf_path.read_text(encoding="utf-8")) or {}
         if isinstance(pf_payload, dict):
             pf_payload["require_type_references"] = False
-            # Single-grid import: one ElmNet + one geo SLD (GIS coordinates preserved).
+            # Readable SLD: junction nodes, auto layout, one page per feeder.
             pf_payload["split_networks_by_system"] = False
             pf_payload["create_feeder_graphics"] = True
             pf_payload["create_feeder_objects"] = False
             pf_payload["include_coordinates"] = True
+            pf_payload["diagrams_per_feeder"] = True
+            pf_payload["diagram_layout"] = "auto"
+            pf_payload["diagram_min_edge_length"] = 20.0
+            pf_payload["terminal_usage"] = 1
+            pf_payload["graphic_symbols"] = {
+                "terminal": "Term",
+                "line": "d_lin",
+                "source": "d_sym",
+                "load": "d_load",
+                "transformer": "d_tr2",
+            }
             if run_name:
                 pf_payload["network_name"] = f"{run_name} Network"
             pf_path.write_text(
@@ -351,8 +358,10 @@ def _is_cymdist_data_bundle(assessment) -> bool:
     )
 
 
-def _bundle_data_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
-    return tuple(path for path in paths if not is_cymdist_import_config(path))
+def _package_data_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+    """Return every path the user loaded; never drop package members here."""
+
+    return tuple(paths)
 
 
 def _select_conversion_paths(
@@ -361,36 +370,15 @@ def _select_conversion_paths(
     on_progress: ProgressReporter = None,
     announce: bool = True,
 ) -> tuple[Path, ...]:
-    """Drop CYMDIST import-config and non-electrical inventory Excel/CSV layers."""
+    """Return every path in the loaded package."""
 
-    data_paths = _bundle_data_paths(paths)
-    if len(data_paths) <= 1:
-        return data_paths
-    if any(is_cymdist_network_export(path) for path in data_paths):
-        return data_paths
-    included, decisions = filter_dgs_relevant_paths(data_paths)
-    skipped = [item for item in decisions if not item.include]
-    if announce and skipped and included:
+    data_paths = _package_data_paths(paths)
+    if announce and len(data_paths) > 1:
         emit_progress(
             on_progress,
-            f"[Paquete] Omitidos {len(skipped)} archivo(s) que no aportan al DGS:",
+            f"[Paquete] Se procesarán {len(data_paths)} archivo(s) de datos.",
         )
-        for item in skipped:
-            emit_progress(on_progress, f"  - {item.path.name}: {item.reason}")
-    if announce and included:
-        emit_progress(
-            on_progress,
-            f"[Paquete] Se ejecutarán {len(included)} archivo(s) eléctricos/topológicos.",
-        )
-    if not included:
-        # Universal packages without inventory filename markers (e.g. buses.csv).
-        if announce:
-            emit_progress(
-                on_progress,
-                "[Paquete] Sin marcadores de inventario; se usan todos los archivos de datos.",
-            )
-        return data_paths
-    return included
+    return data_paths
 
 
 def _format_bundle_summary(assessment) -> str:
@@ -430,9 +418,14 @@ def _sources_for_paths(
 ) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     used: set[str] = set()
-    mapped = _mapped_table_names(mapping) if mapping else set()
-    for path in _bundle_data_paths(paths):
-        kind = detect_input_kind(path)
+    for path in _package_data_paths(paths):
+        try:
+            kind = detect_input_kind(path)
+        except UnsupportedInputError:
+            if is_cymdist_import_config(path):
+                kind = InputKind.CYMDIST_TEXT
+            else:
+                raise
         base = re.sub(r"[^A-Za-z0-9_]+", "_", path.stem) or "source"
         source_id = base
         index = 1
@@ -453,15 +446,7 @@ def _sources_for_paths(
         elif kind is InputKind.MSSQL_BACKUP:
             os.environ["GIS2DGS_MSSQL_BACKUP"] = str(path.resolve())
         sources.append(entry)
-    if not mapped:
-        return sources
-    filtered = [
-        entry
-        for entry in sources
-        if (entry.get("options") or {}).get("table_name") in mapped
-        or Path(str(entry["uri"])).stem in mapped
-    ]
-    return filtered or sources
+    return sources
 
 
 def _write_loaded_project(
@@ -536,8 +521,7 @@ def _load_and_run_input(
         return ExecutionOutcome(
             False,
             "load",
-            "Ningún archivo del paquete aporta capas eléctricas para construir el DGS. "
-            "Se omitieron vías, zonas, retenidas, PAT, estructuras, UAP y similares.",
+            "El paquete no contiene archivos de datos detectables.",
             {"source": str(loaded.path)},
         )
     bundle_assessment = None
@@ -634,7 +618,7 @@ def _load_and_run_input(
 
     # Multimodal conversion strategy selection.
     schema = discover_schema(
-        _read_input_paths(data_paths, sample_rows=sample_rows),
+        _read_input_paths(data_paths, sample_rows=sample_rows, on_progress=on_progress),
         sample_rows=sample_rows if sample_rows is not None else env_sample_rows(),
     )
     strategy_decision = select_conversion_strategy(
@@ -676,12 +660,6 @@ def _load_and_run_input(
 
     emit_progress(on_progress, f"[Proyecto] Escribiendo project.yaml en {run_dir}…")
     sources = _sources_for_paths(data_paths, mapping=mapping)
-    if len(sources) < len(_bundle_data_paths(data_paths)):
-        emit_progress(
-            on_progress,
-            f"[Proyecto] Conversión con {len(sources)} fuente(s) mapeada(s) "
-            f"(de {len(_bundle_data_paths(data_paths))} eléctricas).",
-        )
     for source in sources:
         emit_progress(
             on_progress,
@@ -948,11 +926,11 @@ def suggest_mapping_for_loaded(
                 return ExecutionOutcome(
                     False,
                     "suggest-mapping",
-                    "Ningún archivo aporta capas eléctricas para proponer mapping.",
+                    "El paquete no contiene archivos de datos para proponer mapping.",
                     {"path": str(loaded.path)},
                 )
             schema = discover_schema(
-                _read_input_paths(input_paths, sample_rows=budget),
+                _read_input_paths(input_paths, sample_rows=budget, on_progress=on_progress),
                 sample_rows=budget,
             )
         suggestion = suggest_mapping(
@@ -1213,7 +1191,7 @@ def _bundle_detail(
         f"- {file_path.name} [{row.get('detected_kind', '?')}]"
         for file_path, row in zip(files, detections, strict=False)
     )
-    data_paths = _bundle_data_paths(tuple(files))
+    data_paths = _package_data_paths(tuple(files))
     if len(data_paths) > 1:
         lines.append("")
         lines.append("Análisis de paquete (mismo sistema eléctrico):")
@@ -1318,21 +1296,42 @@ def _reader_options(sample_rows: int | None) -> dict[str, Any]:
     return options
 
 
-def _read_input_paths(paths: tuple[Path, ...], *, sample_rows: int | None) -> Any:
+def _read_input_paths(
+    paths: tuple[Path, ...],
+    *,
+    sample_rows: int | None,
+    on_progress: ProgressReporter = None,
+) -> Any:
     datasets = []
-    for path in _bundle_data_paths(paths):
-        kind = detect_input_kind(path)
+    for path in paths:
+        try:
+            kind = detect_input_kind(path)
+        except UnsupportedInputError as exc:
+            emit_progress(
+                on_progress,
+                f"  {path.name}: formato no legible como datos ({exc})",
+            )
+            continue
         options = _reader_options(sample_rows)
         if kind in {InputKind.CSV, InputKind.EXCEL}:
             options["table_name"] = path.stem
-        datasets.append(
-            InputReaderFactory.create(
-                str(path),
-                kind=kind,
-                source_id=path.stem,
-                options=options,
-            ).read()
-        )
+        try:
+            datasets.append(
+                InputReaderFactory.create(
+                    str(path),
+                    kind=kind,
+                    source_id=path.stem,
+                    options=options,
+                ).read()
+            )
+        except (InputError, OSError, ValueError) as exc:
+            emit_progress(
+                on_progress,
+                f"  {path.name}: error de lectura ({exc})",
+            )
+            continue
+    if not datasets:
+        raise InputError("Ningún archivo del paquete pudo leerse como datos de red.")
     return enrich_cymdist_tables(
         merge_datasets(datasets, on_conflict="overwrite")
     )
@@ -1364,11 +1363,11 @@ def _execute_inspect_inputs(
     on_progress: ProgressReporter = None,
 ) -> ExecutionOutcome:
     budget = sample_rows if sample_rows is not None else env_sample_rows()
-    for path in _bundle_data_paths(paths):
+    for path in paths:
         emit_progress(on_progress, f"  leyendo {path.name}…")
     try:
         schema = discover_schema(
-            _read_input_paths(paths, sample_rows=budget),
+            _read_input_paths(paths, sample_rows=budget, on_progress=on_progress),
             sample_rows=budget,
         )
     except (InputError, UnsupportedInputError, OSError, ValueError) as exc:
@@ -1380,10 +1379,16 @@ def _execute_inspect_inputs(
         )
     payload: dict[str, Any] = schema.as_dict()
     payload["detected_files"] = [str(path) for path in paths]
+    payload["layer_classification"] = classify_dataset_layers(schema.tables).as_dict()
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(
             yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        layer_path = output.parent / "layer_classification.yaml"
+        layer_path.write_text(
+            yaml.safe_dump(payload["layer_classification"], sort_keys=False, allow_unicode=True),
             encoding="utf-8",
         )
         payload = {**payload, "written_to": str(output)}

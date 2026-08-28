@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
+
+import yaml
 
 from .readers.cymdist_text import (
     is_cymdist_import_config,
@@ -13,6 +16,8 @@ from .readers.cymdist_text import (
 )
 
 _DATE_TOKEN = re.compile(r"(20\d{6}|\d{6})")
+_PROFILE_PATH = Path(__file__).resolve().parents[3] / "config" / "layer_profiles.yaml"
+_INVENTORY_SUFFIX = re.compile(r"[_-]([A-Z]{1,3}\d{2,6})$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +275,24 @@ def _confidence_score(
     cross_ratio: float | None,
     roles: set[str],
 ) -> float:
+    cymdist_roles = roles & {"network", "loads"}
+    if cymdist_roles:
+        return _cymdist_confidence_score(
+            data_reports=data_reports,
+            linked=linked,
+            cross_ratio=cross_ratio,
+            roles=roles,
+        )
+    return _tabular_confidence_score(data_reports=data_reports, linked=linked)
+
+
+def _cymdist_confidence_score(
+    *,
+    data_reports: list[BundleFileReport],
+    linked: bool,
+    cross_ratio: float | None,
+    roles: set[str],
+) -> float:
     score = 0.2
     if data_reports:
         score += 0.2
@@ -282,3 +305,86 @@ def _confidence_score(
     if cross_ratio is not None:
         score += 0.1 * cross_ratio
     return min(score, 1.0)
+
+
+def _tabular_confidence_score(
+    *,
+    data_reports: list[BundleFileReport],
+    linked: bool,
+) -> float:
+    """Score GIS/Excel/CSV inventory packages by electrical role coverage, not CYMDIST."""
+
+    score = 0.15
+    if not data_reports:
+        return score
+    score += 0.15
+    roles = _infer_tabular_inventory_roles(data_reports)
+    if roles.get("buses"):
+        score += 0.2
+    if roles.get("lines"):
+        score += 0.2
+    if roles.get("sources"):
+        score += 0.1
+    if roles.get("loads"):
+        score += 0.1
+    if roles.get("transformers"):
+        score += 0.05
+    if roles.get("buses") and roles.get("lines"):
+        score += 0.15
+    if linked:
+        score += 0.1
+    if _shared_inventory_suffix(data_reports):
+        score += 0.05
+    return min(score, 1.0)
+
+
+@lru_cache(maxsize=1)
+def _load_tabular_role_markers() -> dict[str, tuple[str, ...]]:
+    if not _PROFILE_PATH.is_file():
+        return {}
+    payload = yaml.safe_load(_PROFILE_PATH.read_text(encoding="utf-8")) or {}
+    roles = payload.get("roles", {})
+    markers: dict[str, tuple[str, ...]] = {}
+    if not isinstance(roles, dict):
+        return markers
+    for role, definition in roles.items():
+        if not isinstance(definition, dict):
+            continue
+        raw = definition.get("name_markers", ())
+        if isinstance(raw, list):
+            markers[str(role)] = tuple(str(item).casefold() for item in raw)
+    return markers
+
+
+def _normalize_inventory_token(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", name.casefold())
+
+
+def _infer_tabular_inventory_roles(
+    reports: list[BundleFileReport],
+) -> dict[str, bool]:
+    markers = _load_tabular_role_markers()
+    found = {role: False for role in markers}
+    for report in reports:
+        if report.role != "tabular":
+            continue
+        token = _normalize_inventory_token(Path(report.name).stem)
+        for role, role_markers in markers.items():
+            if any(marker in token for marker in role_markers):
+                found[role] = True
+    return found
+
+
+def _shared_inventory_suffix(reports: list[BundleFileReport]) -> bool:
+    """Return True when multiple tabular files share a feeder/inventory suffix."""
+
+    suffixes: list[str] = []
+    for report in reports:
+        if report.role != "tabular":
+            continue
+        match = _INVENTORY_SUFFIX.search(Path(report.name).stem)
+        if match is not None:
+            suffixes.append(match.group(1).casefold())
+    if len(suffixes) < 2:
+        return False
+    return len(set(suffixes)) == 1

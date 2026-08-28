@@ -116,8 +116,38 @@ def _is_non_endpoint_column(name: str) -> bool:
             "estado",
             "fecha",
             "color",
+            "kw",
+            "kwh",
+            "mva",
+            "mw",
+            "mvar",
+            "voltaje",
+            "tension",
+            "nominal",
+            "total",
         )
     )
+
+
+def is_plausible_endpoint_column(name: str) -> bool:
+    """Return whether a column name can hold bus endpoint identifiers."""
+
+    return not _is_non_endpoint_column(name)
+
+
+def sanitize_line_endpoint_fields(
+    columns: tuple[str, ...] | list[str],
+    fields: dict[str, str],
+) -> None:
+    """Drop from_bus/to_bus mappings that point at missing or non-endpoint columns."""
+
+    column_set = set(columns)
+    for key in ("from_bus", "to_bus"):
+        column_name = fields.get(key)
+        if not column_name:
+            continue
+        if column_name not in column_set or not is_plausible_endpoint_column(column_name):
+            fields.pop(key, None)
 
 
 def apply_hierarchical_line_endpoints(

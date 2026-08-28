@@ -1,5 +1,5 @@
 # GIS2DGS — punto de entrada universal (Windows)
-# Requisito: .venv (ejecute .\INSTALL_AND_VERIFY.ps1 si no existe).
+# Si no existe .venv, ejecuta .\INSTALL_AND_VERIFY.ps1 automaticamente (primera vez).
 #
 # Uso:
 #   .\RUN.ps1
@@ -12,15 +12,28 @@
 #       plantilla DGS    → inspección del esquema Excel DGS
 #   → Proponer mapping (opcional): sugiere YAML de columnas; no escribe DGS
 #
+# SQL Server (Docker) se deja corriendo al cerrar la GUI para poder cargar .bak
+# en la siguiente sesión. Limpieza opcional:
+#   .\RUN.ps1 -Cleanup
+#   $env:GIS2DGS_MSSQL_CLEANUP = "1"; .\RUN.ps1
+#
 # Para generar DGS desde datos nuevos: inspeccione, proponga mapping, configure
 # project.yaml y vuelva a cargarlo antes de Ejecutar.
+
+param(
+    [switch]$Cleanup
+)
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $py = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) {
-    throw "No existe .venv. Ejecute primero .\INSTALL_AND_VERIFY.ps1"
+    Write-Host "No existe .venv; ejecutando instalacion integral (solo la primera vez)..." -ForegroundColor Yellow
+    & "$PSScriptRoot\INSTALL_AND_VERIFY.ps1"
+    if (-not (Test-Path $py)) {
+        throw "No se pudo crear .venv. Revise Python 3.11+ e INSTALL_AND_VERIFY.ps1"
+    }
 }
 
 Write-Host "Verificando SQL Server (necesario para archivos .bak)..." -ForegroundColor DarkGray
@@ -37,6 +50,8 @@ if ($ensureExit -ne 0) {
         Write-Host "Hint .bak: docker pull mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04" -ForegroundColor DarkYellow
         Write-Host "  o defina GIS2DGS_MSSQL_URL hacia un SQL Server local (docs\SYSTEM_REQUIREMENTS.md)." -ForegroundColor DarkYellow
     }
+} else {
+    Write-Host "SQL Server listo para restaurar .bak." -ForegroundColor DarkGray
 }
 
 # Cargar variables de sesión que ensure_mssql.ps1 pudo haber creado/actualizado
@@ -46,10 +61,18 @@ if (Test-Path $sessionEnv) {
 }
 
 Write-Host "Abriendo GIS2DGS. Cargue un archivo o carpeta y pulse Ejecutar." -ForegroundColor Cyan
-Write-Host "Backup .bak: al pulsar Ejecutar se comprueba SQL Server (local o Docker)." -ForegroundColor DarkGray
+Write-Host "Backup .bak: al pulsar Ejecutar se restaura en SQL Server (Docker/local)." -ForegroundColor DarkGray
 try {
     & $py -m gis2dgs
 } finally {
-    Write-Host "Limpiando sesión Docker..." -ForegroundColor DarkGray
-    & "$PSScriptRoot\scripts\cleanup_mssql.ps1"
+    $doCleanup = $Cleanup -or (
+        ($env:GIS2DGS_MSSQL_CLEANUP -as [string]) -match '^(1|true|yes)$'
+    )
+    if ($doCleanup) {
+        Write-Host "Limpiando sesión Docker (-Cleanup)..." -ForegroundColor DarkGray
+        & "$PSScriptRoot\scripts\cleanup_mssql.ps1"
+    } else {
+        Write-Host "SQL Server Docker se mantiene activo para el próximo .bak." -ForegroundColor DarkGray
+        Write-Host "Para apagarlo: .\scripts\cleanup_mssql.ps1   o   .\RUN.ps1 -Cleanup" -ForegroundColor DarkGray
+    }
 }

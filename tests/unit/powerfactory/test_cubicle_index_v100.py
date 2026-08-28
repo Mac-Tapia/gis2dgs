@@ -8,7 +8,12 @@ def test_cubicles_carry_connection_index() -> None:
     network.add_bus(Bus(BusId("B1"), "B1", 10.0))
     network.add_bus(Bus(BusId("B2"), "B2", 10.0))
     network.add_line(Line(LineId("L1"), "L1", BusId("B1"), BusId("B2"), 1.0, 10.0))
-    policy = PowerFactoryMappingPolicy(require_type_references=False)
+    policy = PowerFactoryMappingPolicy(
+        require_type_references=False,
+        ensure_feeder_sources=False,
+        create_feeder_graphics=False,
+        create_feeder_objects=False,
+    )
 
     model = PowerFactoryMapper(policy).map(network)
     cubicles = [obj for obj in model.objects.values() if obj.class_name == "StaCubic"]
@@ -24,6 +29,9 @@ def test_policy_can_create_closed_staswitch_per_cubicle() -> None:
     policy = PowerFactoryMappingPolicy(
         require_type_references=False,
         create_cubicle_switches=True,
+        ensure_feeder_sources=False,
+        create_feeder_graphics=False,
+        create_feeder_objects=False,
     )
 
     model = PowerFactoryMapper(policy).map(network)

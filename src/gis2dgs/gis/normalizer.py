@@ -189,6 +189,18 @@ def normalize_service_state(value: Any) -> bool:
         return True
     if text in inactive_values:
         return False
+    lifecycle_inventory_states = {
+        "CORREGIDA",
+        "MODIFICADA",
+        "NUEVA",
+        "EXISTENTE",
+        "VIGENTE",
+        "ACTUALIZADA",
+        "VALIDADA",
+        "BORRADOR",
+    }
+    if text in lifecycle_inventory_states:
+        return True
     # Ownership / network-role taxonomies are not service states (map ESTADO*, not PROPIETARIO/ROL).
     ownership_or_role = {
         "DISTRIBUIDOR",

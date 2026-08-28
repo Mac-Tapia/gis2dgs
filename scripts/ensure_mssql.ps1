@@ -264,10 +264,11 @@ if ($probe -and $probe.ok) {
     }
 }
 
-Write-Warn "No hay SQL Server alcanzable en localhost / LocalDB / GIS2DGS_MSSQL_URL."
-
 $docker = Get-Command docker -ErrorAction SilentlyContinue
-if (-not $docker) {
+if ($docker) {
+    Write-Info "No hay instancia local lista; se arrancara SQL Server en Docker (gis2dgs-mssql)..."
+} else {
+    Write-Warn "No hay SQL Server alcanzable en localhost / LocalDB / GIS2DGS_MSSQL_URL."
     Write-Warn "Docker no esta instalado. Instale SQL Server Express/LocalDB o Docker Desktop."
     Write-Host "Documentacion: docs\SYSTEM_REQUIREMENTS.md y docs\GUIA_PASO_A_PASO.md"
     exit 2

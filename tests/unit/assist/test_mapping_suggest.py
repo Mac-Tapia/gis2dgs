@@ -256,6 +256,62 @@ def test_suggest_mapping_on_vnr_style_schema() -> None:
     assert any("connectivity" in warning.lower() for warning in suggestion.report["warnings"])
 
 
+def test_suggest_mapping_point_inventory_without_lexical_table_name() -> None:
+    schema = DatasetSchema(
+        tables=(
+            TableSchema(
+                "NMT_IN110",
+                260,
+                (
+                    _column("ID", unique=260),
+                    _column("X", "float64", 260),
+                    _column("Y", "float64", 260),
+                    _column("Descripción", unique=200),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "EQPM_IN110",
+                134,
+                (
+                    _column("id0", unique=134),
+                    _column("X1", "float64", 134),
+                    _column("Y1", "float64", 134),
+                    _column("X2", "float64", 134),
+                    _column("Y2", "float64", 134),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+            TableSchema(
+                "AMT_IN110",
+                1,
+                (
+                    _column("id0", unique=1),
+                    _column("label4", unique=1),
+                ),
+                False,
+                None,
+                None,
+                None,
+            ),
+        )
+    )
+    suggestion = suggest_mapping(schema, seed=7, population_size=16, generations=8)
+
+    assert suggestion.mapping.buses is not None
+    assert suggestion.mapping.buses.source == "NMT_IN110"
+    assert suggestion.mapping.buses.source != "AMT_IN110"
+    assert suggestion.mapping.buses.fields["id"] == "ID"
+    assert suggestion.mapping.buses.fields.get("x") == "X"
+    assert suggestion.mapping.buses.fields.get("y") == "Y"
+
+
 def test_suggest_mapping_does_not_use_parent_column_as_line_name() -> None:
     schema = DatasetSchema(
         tables=(

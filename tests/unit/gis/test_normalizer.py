@@ -98,6 +98,11 @@ def test_unknown_service_state_is_rejected() -> None:
         normalize_service_state("DESCONOCIDO")
 
 
+@pytest.mark.parametrize("value", ["Corregida", "MODIFICADA", "Nueva"])
+def test_gis_lifecycle_states_count_as_in_service(value: str) -> None:
+    assert normalize_service_state(value) is True
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [

@@ -4,6 +4,8 @@ buses:
     id: NodeID
     x: CoordX
     y: CoordY
+    feeder_id: NetworkID
+    nominal_voltage_kv: DesiredVoltage
   defaults:
     nominal_voltage_kv: 22.9
 lines:
@@ -14,6 +16,8 @@ lines:
     to_bus: ToNodeID
     length_km: Length
     type_id: LineCableID
+    feeder_id: NetworkID
+    nominal_voltage_kv: DesiredVoltage
   units:
     length_km: m
   defaults:
@@ -29,8 +33,9 @@ loads:
   fields:
     id: DeviceNumber
     bus_id: ToNodeID
-    active_power_mw: Value1
-    reactive_power_mvar: Value2
+    active_power_mw: ActivePower_kW
+    reactive_power_mvar: ReactivePower_kvar
   units:
     active_power_mw: kW
+    reactive_power_mvar: kvar
 target_crs: null

@@ -17,8 +17,10 @@ from gis2dgs.config import (
 from gis2dgs.dgs import DgsMapper, DgsWriter
 from gis2dgs.gis.connectivity import reconstruct_mapped_line_endpoints
 from gis2dgs.gis.coordinates import materialize_mapped_coordinates
+from gis2dgs.gis.inventory_lines import augment_network_lines_from_geometry
+from gis2dgs.gis.dataset import GisDataset
 from gis2dgs.gis.exceptions import GisConnectivityError, GisLayerNotFoundError
-from gis2dgs.gis.hierarchical import prepare_hierarchical_connectivity
+from gis2dgs.gis.hierarchical import prepare_hierarchical_connectivity, sanitize_line_endpoint_fields
 from gis2dgs.gis.mapping.domain_mapper import GisToDomainMapper
 from gis2dgs.gis.voltage_lookup import detect_voltage_lookup
 from gis2dgs.input import InputKind, InputReaderFactory, discover_schema, merge_datasets
@@ -129,6 +131,8 @@ def run_conversion(
     emit_progress(on_progress, "[3/8] Aplicando mapping y conectividad GIS…")
     mapping = load_mapping_config(project.mapping)
     gis_dataset = inputs.to_gis_dataset()
+    # Materialize tabular/text coordinates before CRS operations.
+    gis_dataset = materialize_mapped_coordinates(gis_dataset, mapping)
     if mapping.target_crs is not None:
         emit_progress(
             on_progress,
@@ -145,6 +149,7 @@ def run_conversion(
         mapping,
         voltage_lookup=detect_voltage_lookup(gis_dataset),
     ).map(gis_dataset)
+    augment_network_lines_from_geometry(network, gis_dataset, mapping)
     summary = network.summary()
     emit_progress(
         on_progress,
@@ -175,7 +180,15 @@ def run_conversion(
 
     emit_progress(on_progress, "[6/8] Mapeando a modelo PowerFactory…")
     pf_policy = load_powerfactory_mapping_policy(project.powerfactory_mapping)
-    pf_model = PowerFactoryMapper(pf_policy).map(network, library)
+    pf_model = PowerFactoryMapper(pf_policy).map(
+        network,
+        library,
+        gis_dataset=gis_dataset,
+        line_layer=mapping.lines.source if mapping.lines is not None else None,
+        line_id_field=(
+            mapping.lines.fields.get("id") if mapping.lines is not None else None
+        ),
+    )
     emit_progress(on_progress, "[7/8] Generando documento DGS…")
     dgs_schema = load_dgs_schema(project.dgs_schema)
     dgs_document = DgsMapper(dgs_schema).map_powerfactory_model(pf_model)
@@ -216,12 +229,76 @@ def _prepare_line_connectivity(dataset, mapping, *, report_path: Path):
         bus_mapping=mapping.buses,
     )
 
+    point_chain_stats: dict[str, object] | None = None
+    point_chain_applied = False
+    cfg = mapping.connectivity
+    if cfg.point_chain_source and cfg.point_chain_key_field:
+        point_layer_name = cfg.point_chain_source
+        if point_layer_name in dataset.layers:
+            from gis2dgs.gis.hierarchical import detect_parent_column
+            from gis2dgs.gis.point_chain import assign_line_endpoints_from_point_chain
+
+            line_id = mapping.lines.fields.get("id")
+            point_id = cfg.point_chain_id_field or mapping.buses.fields.get("id")
+            line_key = mapping.lines.fields.get("feeder_id")
+            length_field = mapping.lines.fields.get("length_km")
+            if line_id and point_id and line_key:
+                parent_for_order = detect_parent_column(
+                    tuple(dataset.layer(mapping.lines.source).columns)
+                )
+                from_bus = mapping.lines.fields.get("from_bus", "from_bus")
+                to_bus = mapping.lines.fields.get("to_bus", "to_bus")
+                from_token = "".join(
+                    ch for ch in str(from_bus).casefold() if ch.isalnum()
+                )
+                if "padre" in from_token:
+                    from_bus = "from_bus"
+                    to_bus = "to_bus"
+                length_unit = mapping.lines.units.get("length_km", "km")
+                updated_lines, stats = assign_line_endpoints_from_point_chain(
+                    dataset.layer(mapping.lines.source),
+                    dataset.layer(point_layer_name),
+                    line_id_field=line_id,
+                    point_id_field=point_id,
+                    line_key_field=line_key,
+                    point_key_field=cfg.point_chain_key_field,
+                    sequence_field=cfg.point_chain_sequence_field,
+                    parent_field=parent_for_order,
+                    length_field=length_field,
+                    length_unit_is_metres=str(length_unit).lower()
+                    in {"m", "metre", "meter"},
+                    from_bus_field=from_bus,
+                    to_bus_field=to_bus,
+                    point_x_field=cfg.point_chain_x_field
+                    or mapping.buses.fields.get("x"),
+                    point_y_field=cfg.point_chain_y_field
+                    or mapping.buses.fields.get("y"),
+                )
+                point_chain_applied = stats.lines_updated > 0
+                point_chain_stats = {
+                    "feeders_linked": stats.feeders_linked,
+                    "lines_updated": stats.lines_updated,
+                    "lines_skipped": stats.lines_skipped,
+                }
+                if point_chain_applied:
+                    mapping.lines.fields["from_bus"] = from_bus
+                    mapping.lines.fields["to_bus"] = to_bus
+                    refreshed = GisDataset()
+                    for name, frame in dataset.layers.items():
+                        if name == mapping.lines.source:
+                            refreshed.add_layer(name, updated_lines)
+                        else:
+                            refreshed.add_layer(name, frame)
+                    dataset = refreshed
+
     bus_id = mapping.buses.fields.get("id")
     line_id = mapping.lines.fields.get("id")
     if not bus_id or not line_id:
         return dataset
-    from_bus = mapping.lines.fields.setdefault("from_bus", "from_bus")
-    to_bus = mapping.lines.fields.setdefault("to_bus", "to_bus")
+    line_columns = tuple(dataset.layer(mapping.lines.source).columns)
+    sanitize_line_endpoint_fields(line_columns, mapping.lines.fields)
+    from_bus = mapping.lines.fields.get("from_bus", "from_bus")
+    to_bus = mapping.lines.fields.get("to_bus", "to_bus")
     try:
         updated, proposal = reconstruct_mapped_line_endpoints(
             dataset,
@@ -240,11 +317,19 @@ def _prepare_line_connectivity(dataset, mapping, *, report_path: Path):
         proposal = None
     else:
         dataset = updated
+        line_frame = dataset.layer(mapping.lines.source)
+        if from_bus in line_frame.columns:
+            mapping.lines.fields["from_bus"] = from_bus
+        if to_bus in line_frame.columns:
+            mapping.lines.fields["to_bus"] = to_bus
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, object] = {
         "hierarchical_applied": hierarchical_applied,
+        "point_chain_applied": point_chain_applied,
     }
+    if point_chain_stats is not None:
+        payload["point_chain"] = point_chain_stats
     if proposal is not None:
         payload.update(
             {
